@@ -1,7 +1,6 @@
 """Test main functions."""
 
 import pytest
-
 from template.main import main
 
 

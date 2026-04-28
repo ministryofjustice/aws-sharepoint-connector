@@ -1,7 +1,7 @@
 from src.config import AppConfig
+from src.engine import UploadToS3Engine, UploadToSharePointEngine
 from src.exceptions import UploadError
 from src.utils import setup_logger
-from src.engine import UploadToSharePointEngine, UploadToS3Engine
 
 log = setup_logger()
 
@@ -11,13 +11,15 @@ ENGINE_MAP: dict[str, type[UploadToSharePointEngine | UploadToS3Engine]] = {
 }
 
 
-def main():
+def main() -> None:
+    """Entry point for the connector application."""
     log.info("Starting file transfer process...")
     config = AppConfig()
 
-    engine_class = ENGINE_MAP.get(config.MODE)
+    engine_class = ENGINE_MAP[config.MODE]
     if not engine_class:
-        raise ValueError(f"Invalid engine specified: {config.MODE}")
+        err = f"Invalid engine specified: {config.MODE}. Valid options are: {', '.join(ENGINE_MAP.keys())}"
+        raise ValueError(err)
 
     engine = engine_class(config=config)
     try:
