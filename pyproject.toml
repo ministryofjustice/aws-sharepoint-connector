@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.11.0",
     "pydantic>=2.12.3",
     "requests>=2.32.4",
+    "types-requests>=2.33.0.20260408",
 ]
 
 [dependency-groups]
@@ -34,7 +35,7 @@ package = true
 where = ["src", "."]
 
 [project.scripts]
-template = "connector.main:main"
+connector = "connector.main:main"
 
 [tool.mypy]
 strict = true
@@ -44,6 +45,7 @@ explicit_package_bases = true
 warn_unused_ignores = true
 show_error_codes = true
 mypy_path = "src"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing"
