@@ -1,0 +1,12 @@
+---
+name: Python Unit Test
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+    paths: ["**/*.py"]
+jobs:
+  python-unit-test:
+    name: Python Unit Test
+    permissions:
+      contents: read
+    uses: ministryofjustice/data-engineering-github-actions/.github/workflows/reusable-python-unit-test.yml@main

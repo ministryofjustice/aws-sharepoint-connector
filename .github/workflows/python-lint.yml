@@ -1,0 +1,12 @@
+---
+name: Python Linting
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+    paths: ['**/*.py']
+jobs:
+  lint_python:
+    name: Lint with Ruff
+    permissions:
+      contents: read
+    uses: ministryofjustice/data-engineering-github-actions/.github/workflows/reusable-python-lint.yml@main

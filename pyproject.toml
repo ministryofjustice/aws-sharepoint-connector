@@ -1,0 +1,77 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "de-template"
+version = "0.1.0"
+description = "A template repo for Data Engineering projects"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.1",
+    "ruff>=0.15.11",
+]
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.0.0"
+]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+
+[project.scripts]
+template = "template.main:main"
+
+[tool.mypy]
+strict = true
+disallow_untyped_defs = true
+exclude = "migrations|dist|build|typings"
+explicit_package_bases = true
+warn_unused_ignores = true
+show_error_codes = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.ruff.lint]
+select = ["ALL"]
+# Remove warnings
+ignore = [
+    "D203", # 1 blank line required before class docstring
+    "D213", # Multi-line docstring summary should start at the second line
+    "COM812", # Trailing comma missing
+    "T201", # No print statements
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "ARG", # some arguments are unused in tests functions but useful (e.g. mocks)
+    "S101", # asserts are OK for tests
+    "SLF001" # accessing private members is OK for tests
+]
+
+[tool.lint.ruff.pydocstyle]
+convention = "google"
+
+[tool.lint.ruff.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.lint.bandit]
+skips = [
+    "B101", # assert used
+]

@@ -1,0 +1,11 @@
+---
+name: Check pre commit
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+jobs:
+  pre-commit:
+    name: Check pre commit
+    permissions:
+      contents: read
+    uses: ministryofjustice/data-engineering-github-actions/.github/workflows/reusable-pre-commit.yml@main

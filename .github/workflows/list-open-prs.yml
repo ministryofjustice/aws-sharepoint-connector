@@ -1,0 +1,14 @@
+---
+name: List Open Prs
+on:
+  schedule:
+    - cron: 0 7 * * 1-5
+  workflow_dispatch:
+jobs:
+  list-open-prs:
+    name: List Open PRs
+    uses: ministryofjustice/data-engineering-github-actions/.github/workflows/reusable-list-open-prs.yml@main
+    with:
+      dry_run: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' || false }}
+    secrets:
+      slack_workflow_url: ${{ secrets.SLACK_WEBHOOK_URL }}

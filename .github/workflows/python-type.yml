@@ -1,0 +1,11 @@
+---
+name: Python type check
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+jobs:
+  python-type-check:
+    name: Python type check
+    permissions:
+      contents: read
+    uses: ministryofjustice/data-engineering-github-actions/.github/workflows/reusable-python-type.yml@main
