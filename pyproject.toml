@@ -3,13 +3,19 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [project]
-name = "de-template"
+name = "aws-sharepoint-connector"
 version = "0.1.0"
-description = "A template repo for Data Engineering projects"
+description = "Provides a connector via Graph API between AWS and SharePoint"
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "azure-identity>=1.24.0",
+    "boto3>=1.40.8",
+    "pydantic-settings>=2.11.0",
+    "pydantic>=2.12.3",
+    "requests>=2.32.4",
+]
 
 [dependency-groups]
 dev = [
@@ -28,7 +34,7 @@ package = true
 where = ["src", "."]
 
 [project.scripts]
-template = "template.main:main"
+template = "connector.main:main"
 
 [tool.mypy]
 strict = true
