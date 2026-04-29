@@ -4,6 +4,7 @@ import requests
 from azure.identity import ClientSecretCredential
 
 from connector.constants import SCOPE
+from connector.exceptions import NoLibraryError
 
 
 def get_azure_token(tenant_id: str, client_id: str, client_secret: str) -> str:
@@ -35,7 +36,7 @@ def get_drive_id(site_id: str, library_name: str, headers: dict[str, str]) -> st
         str: The ID of the document library.
 
     Raises:
-        ValueError: If the library is not found on the site.
+        NoLibraryError: If the library is not found on the site.
 
     """
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
@@ -46,4 +47,4 @@ def get_drive_id(site_id: str, library_name: str, headers: dict[str, str]) -> st
         if drive["name"] == library_name:
             return drive["id"]  # type: ignore[no-any-return]
     err = f"Library '{library_name}' not found on site '{site_id}'"
-    raise ValueError(err)
+    raise NoLibraryError(err)
