@@ -26,7 +26,6 @@ source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },
     { name = "boto3" },
-    { name = "pandas" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "requests" },
@@ -40,6 +39,7 @@ dev = [
 ]
 test = [
     { name = "moto" },
+    { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -48,7 +48,6 @@ test = [
 requires-dist = [
     { name = "azure-identity", specifier = ">=1.24.0" },
     { name = "boto3", specifier = ">=1.40.8" },
-    { name = "pandas", specifier = ">=3.0.2" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "requests", specifier = ">=2.32.4" },
@@ -62,6 +61,7 @@ dev = [
 ]
 test = [
     { name = "moto", specifier = ">=5.1.22" },
+    { name = "pandas", specifier = ">=3.0.2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
