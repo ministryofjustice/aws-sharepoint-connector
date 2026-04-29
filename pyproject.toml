@@ -24,6 +24,8 @@ dev = [
     "ruff>=0.15.11",
 ]
 test = [
+    "moto>=5.1.22",
+    "pandas>=3.0.2",
     "pytest>=9.0.3",
     "pytest-cov>=7.0.0"
 ]
@@ -63,6 +65,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
     "ARG", # some arguments are unused in tests functions but useful (e.g. mocks)
+    "PLR2004", # hardcoded test data is OK for tests
     "S101", # asserts are OK for tests
     "SLF001" # accessing private members is OK for tests
 ]
