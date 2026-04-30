@@ -1,13 +1,15 @@
 """Unit tests for the config module."""
 
+import os
 from uuid import UUID
 
-from tests.test_utils import create_test_config
+from connector.config import AppConfig
 
 
 def test_config_loading() -> None:
     """Test that the AppConfig class correctly loads from environment variables."""
-    config = create_test_config(sp_folder_path="fake-folder-path")
+    os.environ["SP_FOLDER_PATH"] = "fake-folder-path"
+    config = AppConfig()  # type: ignore[call-arg]
 
     assert UUID("12345678-9012-3456-7890-123456789012") == config.SECRET_AZURE_TENANT_ID
     assert config.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"

@@ -1,7 +1,6 @@
 """Utility functions and fixtures for unit tests."""
 
 import json
-import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Literal
@@ -12,8 +11,6 @@ import pandas as pd
 from azure.core.credentials import AccessToken
 from requests import Response
 
-from connector.config import AppConfig
-
 
 def create_bucket(bucket_name: str, s3: boto3.client) -> None:
     """Create a mocked s3 bucket."""
@@ -21,26 +18,6 @@ def create_bucket(bucket_name: str, s3: boto3.client) -> None:
         Bucket=bucket_name,
         CreateBucketConfiguration={"LocationConstraint": "eu-west-2"},
     )
-
-
-def create_test_config(
-    mode: str = "write_to_s3", sp_folder_path: str = "fake-folder-path"
-) -> AppConfig:
-    """Fixture to provide a sample configuration for tests."""
-    os.environ["SECRET_AZURE_TENANT_ID"] = "12345678901234567890123456789012"  # noqa: S105
-    os.environ["SECRET_AZURE_CLIENT_ID"] = "fake-client-id"  # noqa: S105
-    os.environ["SECRET_AZURE_CLIENT_SECRET"] = (
-        "fake-client-secret"  # pragma: allowlist secret # noqa: S105
-    )
-    os.environ["SP_SITE_NAME"] = "fake-site-name"
-    os.environ["SP_LIBRARY_NAME"] = "Documents"
-    os.environ["SP_FOLDER_PATH"] = sp_folder_path
-    os.environ["SP_FILE_NAME"] = "fake-file.csv"
-    os.environ["S3_BUCKET"] = "fake-bucket"
-    os.environ["FILE_KEY"] = "directory/fake-file.csv"
-    os.environ["MODE"] = mode
-
-    return AppConfig()  # type: ignore[call-arg]
 
 
 def build_response(

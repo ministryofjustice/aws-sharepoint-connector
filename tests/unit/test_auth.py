@@ -6,13 +6,14 @@ from unittest.mock import patch
 import pytest
 
 from connector import auth
+from connector.config import AppConfig
 from connector.exceptions import NoLibraryError
 from tests import test_utils as utils
 
 
 def test_get_azure_token() -> None:
     """Test that get_azure_token returns a token."""
-    config = utils.create_test_config()
+    config = AppConfig()  # type: ignore[call-arg]
 
     with patch(
         "azure.identity.ClientSecretCredential.get_token",
@@ -28,7 +29,7 @@ def test_get_azure_token() -> None:
 
 def test_get_drive_id_success() -> None:
     """Test that get_drive_id returns the correct drive ID."""
-    config = utils.create_test_config()
+    config = AppConfig()  # type: ignore[call-arg]
     site_id = config.SP_SITE_NAME
     library_name = config.SP_LIBRARY_NAME
     headers = {"Authorization": "Bearer fake-token"}
@@ -54,7 +55,7 @@ def test_get_drive_id_success() -> None:
 )
 def test_get_drive_id_empty(content: Literal["no_drives", "no_value"]) -> None:
     """Test that get_drive_id raises a ValueError when the response is empty."""
-    config = utils.create_test_config()
+    config = AppConfig()  # type: ignore[call-arg]
     site_id = config.SP_SITE_NAME
     library_name = config.SP_LIBRARY_NAME
     headers = {"Authorization": "Bearer fake-token"}
