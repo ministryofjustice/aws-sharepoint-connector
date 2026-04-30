@@ -61,10 +61,7 @@ def mock_ensure_destination_folder_response(
 ) -> Response:
     """Mock response for the ensure_destination_folder method."""
     return build_response(
-        json_body={
-            "folder": [] if content == "folder" else None,
-            "file": [] if content == "no_folder" else None,
-        },
+        json_body={"folder": []} if content == "folder" else {"file": []},
         status_code=status_code,
     )
 
