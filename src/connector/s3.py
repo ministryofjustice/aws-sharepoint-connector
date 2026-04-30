@@ -31,8 +31,6 @@ class S3Connector:
         Args:
             data (bytes): The data to upload as bytes.
 
-            data (bytes): The data to upload as bytes.
-
         Returns:
             None
 
