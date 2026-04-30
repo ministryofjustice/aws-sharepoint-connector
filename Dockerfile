@@ -1,27 +1,28 @@
 FROM ghcr.io/ministryofjustice/analytical-platform-airflow-python-base:1.28.0@sha256:a0989a2bea050374220b102a7b2c5643666f80e23a95b1d5033e2dfdb8b350c4
 
-ARG MOJAP_IMAGE_VERSION="default"
-ENV MOJAP_IMAGE_VERSION=${MOJAP_IMAGE_VERSION}
+WORKDIR /opt/analyticalplatform
 
-# THIS IS AN EXAMPLE OF A DOCKERFILE FOR A PYTHON AIRFLOW IMAGE.
-# IT IS NOT MEANT TO BE USED AS-IS
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
 
-# Switch to root user to install packages
-# USER root
+# Copy from the cache instead of linking since it's a mounted volume
+ENV UV_LINK_MODE=copy
 
-# Copy requirements.txt
-# COPY requirements.txt requirements.txt
+# Install the project's dependencies using the lockfile and settings
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 
-# Copy application code
-# COPY src/ .
+# Then, add the rest of the project source code and install it
+# Installing separately from its dependencies allows optimal layer caching
+ADD . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
-# Install requirements
-# RUN <<EOF
-# pip install --no-cache-dir --requirement requirements.txt
-# EOF
+ENV PATH="/opt/analyticalplatform/.venv/bin:$PATH"
 
-# Switch back to non-root user (analyticalplatform)
-# USER ${CONTAINER_UID}
+RUN pwd && ls -la && \
+    find . -maxdepth 2 -type f -iname "main.py" -print
 
-# Execute main.py script
-# ENTRYPOINT ["python3", "main.py"]
+ENTRYPOINT ["python", "src/connector/main.py"]
