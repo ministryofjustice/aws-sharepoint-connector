@@ -2,7 +2,7 @@
 
 import json
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Literal
 from unittest.mock import patch
@@ -107,6 +107,11 @@ def mock_upload_url_response() -> Response:
     return build_response(json_body={"uploadUrl": "https://fake-upload-url"})
 
 
+def mock_session_put_response(status_code: int = 200) -> Response:
+    """Mock response for the requests.session.put method."""
+    return build_response(status_code=status_code)
+
+
 def mock_fetch_file_response(status_code: int) -> Response:
     """Mock response for the fetch_file function."""
     return build_response(
@@ -117,7 +122,7 @@ def mock_fetch_file_response(status_code: int) -> Response:
 def mock_verify_uploaded_file_response(status_code: int, file_name: str) -> Response:
     """Mock response for the verify_uploaded_file function."""
     return build_response(
-        json_body={"value": [{"name": file_name}, {"name": "other-file"}]},
+        json_body={"value": [{"name": file_name, "file": {}}, {"name": "other-file"}]},
         status_code=status_code,
     )
 
@@ -128,8 +133,23 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
 
 
 @contextmanager
-def sharepoint_connector_init_patches() -> Generator[Any, Any, Any]:
+def sharepoint_connector_init_patches(
+    extra_post_side_effects: list[Response] | None = None,
+    extra_get_side_effects: list[Response] | None = None,
+) -> Generator[Any, Any, Any]:
     """Mock the underlying methods of SharePointConnector to avoid real API calls."""
+    post_side_effects: list[Callable[[], Response] | Response] = [mock_token_response()]
+    if extra_post_side_effects:
+        post_side_effects.extend(extra_post_side_effects)
+
+    get_side_effects: list[Callable[[], Response] | Response] = [
+        mock_site_id_response(),
+        mock_drive_id_response("complete"),
+        mock_ensure_destination_folder_response("folder"),
+    ]
+    if extra_get_side_effects:
+        get_side_effects.extend(extra_get_side_effects)
+
     with (
         patch(
             "connector.auth.ClientSecretCredential.get_token",
@@ -137,15 +157,11 @@ def sharepoint_connector_init_patches() -> Generator[Any, Any, Any]:
         ) as mock_token,
         patch(
             "connector.sharepoint.requests.get",
-            side_effect=[
-                mock_site_id_response(),
-                mock_drive_id_response("complete"),
-                mock_ensure_destination_folder_response("folder"),
-            ],
+            side_effect=get_side_effects,
         ) as mock_get,
         patch(
             "connector.sharepoint.requests.post",
-            return_value=mock_upload_url_response(),
+            side_effect=post_side_effects,
         ) as mock_post,
     ):
         yield mock_token, mock_get, mock_post
