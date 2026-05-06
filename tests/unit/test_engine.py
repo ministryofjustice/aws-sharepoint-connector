@@ -113,7 +113,7 @@ def test_upload_s3_download_file_success() -> None:
 
     assert (
         eng.sharepoint_connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
     )
     assert data == b'{"content": "fake-file-content"}'
 
@@ -134,7 +134,7 @@ def test_upload_s3_download_file_error() -> None:
 
     assert (
         eng.sharepoint_connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
     )
 
 

@@ -34,12 +34,10 @@ class SharePointConnector(BaseModel):
     upload_url: str = Field(default="", init=False)
     download_url: str = Field(default="", init=False)
     file_path: str = Field(default="", init=False)
-    folder_path: str = Field(default="", init=False)
 
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
-        self.file_path = f"{self.config.SP_FOLDER_PATH}{self.config.FILE_KEY}"
-        self.folder_path = str(Path(self.file_path).parent).strip("/")
+        self.file_path = f"{self.config.SP_FOLDER_PATH}{self.config.SP_FILE_NAME}"
         self.set_graph_headers()
         self.set_drive_id()
         self.set_base_url()

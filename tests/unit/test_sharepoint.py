@@ -25,11 +25,10 @@ def test_sharepoint_connector_initialization() -> None:
         "Accept": "application/json",
     }
     assert connector.drive_id == "fake-drive-id"
-    assert connector.file_path == "fake-folder-path/directory/fake-file.csv"
-    assert connector.folder_path == "fake-folder-path/directory"
+    assert connector.file_path == "fake/folder/path/fake-file.csv"
     assert (
         connector.base_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:"
     )
 
 
@@ -64,7 +63,7 @@ def test_ensure_destination_folder_success() -> None:
 
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path"
     )
     assert mock_get.call_args[1]["headers"] == {
         "Accept": "application/json",
@@ -186,7 +185,7 @@ def test_set_base_url() -> None:
 
     assert (
         connector.base_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:"
     )
 
 
@@ -206,7 +205,7 @@ def test_create_upload_url() -> None:
     assert connector.upload_url == "https://fake-upload-url"
     assert mock_post.call_count == 1
     assert mock_post.call_args[0][0] == (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/createUploadSession"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/createUploadSession"
     )
     assert mock_post.call_args[1]["headers"] == {
         "Authorization": "Bearer fake-token",
@@ -231,7 +230,7 @@ def test_create_download_url() -> None:
 
     assert (
         connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
     )
 
 
@@ -324,7 +323,7 @@ def test_verify_uploaded_file_success(
     assert mock_verify.call_count == 1
 
     expected_path = (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path:/children?$select=name,size,file"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path:/children?$select=name,size,file"
         if folder_path
         else "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root/children?$select=name,size,file"
     )
