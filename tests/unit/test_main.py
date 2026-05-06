@@ -8,7 +8,7 @@ import pytest
 from connector import engine
 from connector.exceptions import UploadError
 from connector.main import main
-from tests.test_utils import sharepoint_connector_init_patches
+from tests.test_utils import sharepoint_connector_patches
 
 
 @pytest.mark.parametrize(
@@ -23,7 +23,7 @@ def test_main_valid(mode: str, exp_engine: engine.Engine) -> None:
     os.environ["MODE"] = mode
 
     with (
-        sharepoint_connector_init_patches(),
+        sharepoint_connector_patches(),
         patch(
             "connector.engine.UploadToS3Engine.download_file",
             autospec=True,
@@ -66,7 +66,7 @@ def test_main_valid(mode: str, exp_engine: engine.Engine) -> None:
 def test_main_upload_error() -> None:
     """Test that the main function raises an error if the upload fails."""
     with (
-        sharepoint_connector_init_patches(),
+        sharepoint_connector_patches(),
         patch(
             "connector.engine.UploadToS3Engine.download_file",
             autospec=True,

@@ -24,7 +24,7 @@ def test_upload_sharepoint_download_file_success(s3: boto3.client) -> None:
         Body=df.to_csv(index=False).encode("utf-8"),
     )
 
-    with utils.sharepoint_connector_init_patches():
+    with utils.sharepoint_connector_patches():
         eng = engine.UploadToSharePointEngine(config)
         data = eng.download_file()
 
@@ -62,7 +62,7 @@ def test_upload_sharepoint_download_file_error(
             "connector.engine.S3Connector.download_from_s3",
             side_effect=exception,
         ) as mock_download,
-        utils.sharepoint_connector_init_patches(),
+        utils.sharepoint_connector_patches(),
     ):
         eng = engine.UploadToSharePointEngine(config)
         with pytest.raises(UploadError):
@@ -75,7 +75,7 @@ def test_upload_sharepoint_upload_file_success() -> None:
     """Test that the method to upload to SharePoint calls the correct methods."""
     config = AppConfig()  # type: ignore[call-arg]
     with (
-        utils.sharepoint_connector_init_patches(
+        utils.sharepoint_connector_patches(
             extra_post_side_effects=[utils.mock_upload_url_response()],
             extra_get_side_effects=[
                 utils.mock_verify_uploaded_file_response(200, config.FILE_KEY),
@@ -105,7 +105,7 @@ def test_upload_sharepoint_upload_file_success() -> None:
 def test_upload_s3_download_file_success() -> None:
     """Test that the method to download from sharepoint returns the correct data."""
     config = AppConfig()  # type: ignore[call-arg]
-    with utils.sharepoint_connector_init_patches(
+    with utils.sharepoint_connector_patches(
         extra_get_side_effects=[utils.mock_fetch_file_response(200)],
     ):
         eng = engine.UploadToS3Engine(config)
@@ -122,7 +122,7 @@ def test_upload_s3_download_file_error() -> None:
     """Test that the method to download from sharepoint raises an error."""
     config = AppConfig()  # type: ignore[call-arg]
     with (
-        utils.sharepoint_connector_init_patches(),
+        utils.sharepoint_connector_patches(),
         patch(
             "connector.engine.SharePointConnector.fetch_file",
             side_effect=Exception("Mock error"),
@@ -143,7 +143,7 @@ def test_upload_s3_upload_file_success(s3: boto3.client) -> None:
     config = AppConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
 
-    with utils.sharepoint_connector_init_patches():
+    with utils.sharepoint_connector_patches():
         eng = engine.UploadToS3Engine(config)
         eng.upload_file(b"Test content")
 

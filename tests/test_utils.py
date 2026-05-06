@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Literal
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import boto3
 import pandas as pd
@@ -107,10 +107,10 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
 
 
 @contextmanager
-def sharepoint_connector_init_patches(
+def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,
     extra_get_side_effects: list[Response] | None = None,
-) -> Generator[Any, Any, Any]:
+) -> Generator[tuple[Mock, Mock, Mock], Any, Any]:
     """Mock the underlying methods of SharePointConnector to avoid real API calls."""
     post_side_effects: list[Callable[[], Response] | Response] = [mock_token_response()]
     if extra_post_side_effects:
