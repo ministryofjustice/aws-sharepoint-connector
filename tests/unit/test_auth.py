@@ -24,7 +24,7 @@ def test_get_azure_token() -> None:
             config.SECRET_AZURE_CLIENT_ID.get_secret_value(),
             config.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
-    assert token == "fake-token"  # noqa: S105  noqa: B106
+    assert token == "fake-token"  # noqa: S105  # nosec: B106
 
 
 def test_get_drive_id_success() -> None:
