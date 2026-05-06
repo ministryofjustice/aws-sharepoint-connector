@@ -353,7 +353,9 @@ class SharePointConnector(BaseModel):
 
         last_logged_pct = -10
         while start < file_size:
-            to_read = min(CHUNK_SIZE, file_size - start)
+            remaining = file_size - start
+            chunk_size = CHUNK_SIZE if CHUNK_SIZE > 0 else remaining
+            to_read = min(chunk_size, remaining)
             chunk = file.read(to_read)
             try:
                 r = self.put_chunk(

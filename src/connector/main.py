@@ -19,14 +19,8 @@ def main() -> None:
     config = AppConfig()  # type: ignore[call-arg]
 
     engine_class = ENGINE_MAP[config.MODE]
-    if not engine_class:
-        err = (
-            f"Invalid engine specified: {config.MODE}. Valid options are: "
-            f"{', '.join(ENGINE_MAP.keys())}"
-        )
-        raise ValueError(err)
-
     engine = engine_class(config=config)
+
     try:
         content = engine.download_file()
         engine.upload_file(content)
@@ -37,4 +31,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pragma: no cover
