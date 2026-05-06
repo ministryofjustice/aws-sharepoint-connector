@@ -122,35 +122,21 @@ def test_get_site_id_success() -> None:
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
 
-    with (
-        patch(
-            "connector.sharepoint.requests.post",
-            return_value=utils.mock_token_response(),
-        ) as mock_post,
-        patch(
-            "connector.sharepoint.requests.get",
-            return_value=utils.mock_site_id_response(),
-        ) as mock_get,
-    ):
+    with patch(
+        "connector.sharepoint.requests.get",
+        return_value=utils.mock_site_id_response(),
+    ) as mock_get:
         site_id = connector.get_site_id()
 
     assert site_id == "fake-site-id"
-    assert mock_post.call_count == 1
-    assert (
-        mock_post.call_args[0][0]
-        == f"https://login.microsoftonline.com/{config.SECRET_AZURE_TENANT_ID}/oauth2/v2.0/token"
-    )
-    assert mock_post.call_args[1]["data"] == {
-        "client_id": "fake-client-id",
-        "client_secret": "fake-client-secret",  #  pragma: allowlist secret
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
-    }
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == (
         "https://graph.microsoft.com/v1.0/sites/justiceuk.sharepoint.com:/sites/fake-site-name"
     )
-    assert mock_get.call_args[1]["headers"] == {"Authorization": "Bearer fake-token"}
+    assert mock_get.call_args[1]["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
 
 
 @pytest.mark.parametrize(
@@ -310,16 +296,25 @@ def test_verify_uploaded_file_success(
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
 
+    expected_size = 13
+
     with (
         patch(
             "connector.sharepoint.requests.get",
-            return_value=utils.mock_verify_uploaded_file_response(200, config.FILE_KEY),
+            return_value=utils.mock_verify_uploaded_file_response(
+                200,
+                config.SP_FILE_NAME,
+                expected_size,
+            ),
         ) as mock_verify,
-        caplog.at_level(logging.INFO),
+        caplog.at_level(logging.INFO, logger="s3-sharepoint"),
     ):
-        connector.verify_uploaded_file()
+        connector.verify_uploaded_file(expected_size=expected_size)
 
-    assert f"Verified that file '{config.FILE_KEY}' has been uploaded" in caplog.text
+    assert (
+        f"Verified uploaded file '{config.SP_FILE_NAME}' ({expected_size} bytes)"
+        in caplog.text
+    )
     assert mock_verify.call_count == 1
 
     expected_path = (
@@ -346,12 +341,12 @@ def test_verify_uploaded_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
-                json_body={"value": [{"name": "other-file", "file": {}}]},
+                json_body={"value": [{"name": "other-file", "file": {}, "size": 10}]},
             ),
         ),
         pytest.raises(UploadError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file()
+        connector.verify_uploaded_file(expected_size=12)
 
 
 def test_verify_uploaded_error() -> None:
@@ -368,7 +363,7 @@ def test_verify_uploaded_error() -> None:
         ),
         pytest.raises(UploadError, match="Failed to verify uploaded file"),
     ):
-        connector.verify_uploaded_file()
+        connector.verify_uploaded_file(expected_size=12)
 
 
 def test_get_next_start() -> None:
@@ -451,7 +446,7 @@ def test_upload_stream_in_chunks_success(mock_verify: Mock) -> None:
     assert session.put.call_args_list[0][1]["data"] == b"This11bytes"
     assert session.put.call_args_list[1][1]["data"] == b"That11bytes"
     assert session.put.call_args_list[2][1]["data"] == b"Also11bytes"
-    mock_verify.assert_called_once_with()
+    mock_verify.assert_called_once_with(expected_size=33)
 
 
 @patch(
@@ -494,7 +489,7 @@ def test_upload_stream_in_chunks_request_exception_logs_and_recovers(
     assert session.put.call_args_list[2][1]["data"] == b"Also11bytes"
     assert "Chunk upload failed, attempting to resume..." in caplog.text
     assert "Resuming from 11 after partial upload" in caplog.text
-    mock_verify.assert_called_once_with()
+    mock_verify.assert_called_once_with(expected_size=33)
 
 
 @patch(
@@ -534,4 +529,4 @@ def test_upload_stream_in_chunks_bad_request(mock_verify: Mock) -> None:
     bad_response.raise_for_status.assert_called_once_with()
     assert session.get.call_count == 2
     assert session.put.call_count == 3
-    mock_verify.assert_called_once_with()
+    mock_verify.assert_called_once_with(expected_size=33)

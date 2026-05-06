@@ -96,10 +96,19 @@ def mock_fetch_file_response(status_code: int) -> Response:
     )
 
 
-def mock_verify_uploaded_file_response(status_code: int, file_name: str) -> Response:
+def mock_verify_uploaded_file_response(
+    status_code: int,
+    file_name: str,
+    size: int = 0,
+) -> Response:
     """Mock response for the verify_uploaded_file function."""
     return build_response(
-        json_body={"value": [{"name": file_name, "file": {}}, {"name": "other-file"}]},
+        json_body={
+            "value": [
+                {"name": file_name, "size": size, "file": {}},
+                {"name": "other-file", "size": 1, "file": {}},
+            ]
+        },
         status_code=status_code,
     )
 
@@ -115,7 +124,7 @@ def sharepoint_connector_patches(
     extra_get_side_effects: list[Response] | None = None,
 ) -> Generator[tuple[Mock, Mock, Mock], Any, Any]:
     """Mock the underlying methods of SharePointConnector to avoid real API calls."""
-    post_side_effects: list[Callable[[], Response] | Response] = [mock_token_response()]
+    post_side_effects: list[Callable[[], Response] | Response] = []
     if extra_post_side_effects:
         post_side_effects.extend(extra_post_side_effects)
 

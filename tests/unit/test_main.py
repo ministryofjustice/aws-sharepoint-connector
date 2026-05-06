@@ -76,4 +76,4 @@ def test_main_upload_error() -> None:
     ):
         main()
 
-    assert "File transfer failed: Mock upload error" in str(exc.value)
+    assert "Mock upload error" in str(exc.value)

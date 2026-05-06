@@ -78,7 +78,7 @@ def test_upload_sharepoint_upload_file_success() -> None:
         utils.sharepoint_connector_patches(
             extra_post_side_effects=[utils.mock_upload_url_response()],
             extra_get_side_effects=[
-                utils.mock_verify_uploaded_file_response(200, config.FILE_KEY),
+                utils.mock_verify_uploaded_file_response(200, config.SP_FILE_NAME, 12),
             ],
         ) as (_, mock_get, _),
         patch(
