@@ -31,7 +31,7 @@ Operates in two modes: download from SharePoint to S3 (write_to_s3), or upload f
 
 High-level runtime path:
 
-1. Load configuration with `AppConfig` (`src/connector/config.py`).
+1. Load configuration with `ConnectorConfig` (`src/connector/config.py`).
 2. Select engine via `MODE` variable:
 	- `UploadToS3Engine`
 	- `UploadToSharePointEngine`
@@ -250,7 +250,7 @@ Secret values should be set via secret manager and airflow (e.g., client secret)
 
 ### 2) Add additional configuration
 
-1. Add a field in `AppConfig` (`src/connector/config.py`).
+1. Add a field in `ConnectorConfig` (`src/connector/config.py`).
 2. Add validation if needed with a `field_validator`.
 3. Update `.env` docs and this README.
 4. Use the field in connector or engine logic.

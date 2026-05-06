@@ -2,7 +2,7 @@
 
 import os
 
-from connector.config import AppConfig
+from connector.config import ConnectorConfig
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
 from connector.exceptions import UploadError
 from connector.utils import setup_logger
@@ -49,7 +49,7 @@ def main(
     if non_secret_env_vars:
         setup_environment_variables(non_secret_env_vars)
 
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     log.info(
         "Configured transfer mode='%s', s3_bucket='%s', s3_key='%s', "

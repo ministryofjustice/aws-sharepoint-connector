@@ -3,13 +3,13 @@
 import os
 from uuid import UUID
 
-from connector.config import AppConfig
+from connector.config import ConnectorConfig
 
 
 def test_config_loading() -> None:
-    """Test that the AppConfig class correctly loads from environment variables."""
+    """Test that the ConnectorConfig class correctly loads environment variables."""
     os.environ["SP_FOLDER_PATH"] = "fake/folder/path"
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     assert UUID("12345678-9012-3456-7890-123456789012") == config.SECRET_AZURE_TENANT_ID
     assert config.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"

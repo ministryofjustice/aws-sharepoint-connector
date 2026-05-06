@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import requests
 
-from connector.config import AppConfig
+from connector.config import ConnectorConfig
 from connector.exceptions import UploadError
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
@@ -15,7 +15,7 @@ from tests import test_utils as utils
 
 def test_sharepoint_connector_initialization() -> None:
     """Test that the SharePoint connector sets derived fields on init."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -34,7 +34,7 @@ def test_sharepoint_connector_initialization() -> None:
 
 def test_set_graph_headers() -> None:
     """Test that the method to set graph headers returns the expected dict."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -48,7 +48,7 @@ def test_set_graph_headers() -> None:
 
 def test_ensure_destination_folder_success() -> None:
     """Test that ensure_destination_folder returns successfully when folder exists."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -86,7 +86,7 @@ def test_ensure_destination_folder_success() -> None:
 )
 def test_ensure_destination_folder_invalid_path(response: object, message: str) -> None:
     """Test that destination folder validation raises UploadError on bad paths."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -100,7 +100,7 @@ def test_ensure_destination_folder_invalid_path(response: object, message: str) 
 
 def test_ensure_destination_folder_request_error() -> None:
     """Test that destination folder validation raises UploadError on request errors."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -117,7 +117,7 @@ def test_ensure_destination_folder_request_error() -> None:
 
 def test_get_site_id_success() -> None:
     """Test that get_site_id returns the SharePoint site id."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -148,7 +148,7 @@ def test_get_site_id_success() -> None:
 )
 def test_set_drive_id_error(exception: Exception) -> None:
     """Test that set_drive_id raises UploadError when drive id retrieval fails."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with (
         utils.sharepoint_connector_patches(),
@@ -163,7 +163,7 @@ def test_set_drive_id_error(exception: Exception) -> None:
 
 def test_set_base_url() -> None:
     """Test that set_base_url constructs the expected base URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -177,7 +177,7 @@ def test_set_base_url() -> None:
 
 def test_create_upload_url() -> None:
     """Test that create_upload_url stores the returned upload URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -207,7 +207,7 @@ def test_create_upload_url() -> None:
 
 def test_create_download_url() -> None:
     """Test that create_download_url sets the expected content URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -222,7 +222,7 @@ def test_create_download_url() -> None:
 
 def test_fetch_file_success() -> None:
     """Test that fetch_file returns the response bytes."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -240,7 +240,7 @@ def test_fetch_file_success() -> None:
 
 def test_fetch_file_not_found() -> None:
     """Test that fetch_file raises UploadError when the file is missing."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -259,7 +259,7 @@ def test_fetch_file_not_found() -> None:
 
 def test_fetch_file_request_error() -> None:
     """Test that fetch_file raises UploadError on request errors."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -288,7 +288,7 @@ def test_verify_uploaded_file_success(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that verify_uploaded_file succeeds when the uploaded file is present."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     if not folder_path:
         config.SP_FOLDER_PATH = ""
@@ -331,7 +331,7 @@ def test_verify_uploaded_file_success(
 
 def test_verify_uploaded_not_found() -> None:
     """Test that verify_uploaded_file raises UploadError when the file is absent."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -351,7 +351,7 @@ def test_verify_uploaded_not_found() -> None:
 
 def test_verify_uploaded_error() -> None:
     """Test that verify_uploaded_file raises UploadError when the file is absent."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -368,7 +368,7 @@ def test_verify_uploaded_error() -> None:
 
 def test_get_next_start() -> None:
     """Test that get_next_start parses the next expected range."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -388,7 +388,7 @@ def test_get_next_start() -> None:
 
 def test_put_chunk() -> None:
     """Test that put_chunk sends the correct upload request data."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -418,7 +418,7 @@ def test_put_chunk() -> None:
 )
 def test_upload_stream_in_chunks_success(mock_verify: Mock) -> None:
     """Test that upload_stream_in_chunks uploads data and verifies the result."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -456,7 +456,7 @@ def test_upload_stream_in_chunks_request_exception_logs_and_recovers(
     mock_verify: Mock, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test chunk upload logs warning/info and resumes after RequestException."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)
@@ -497,7 +497,7 @@ def test_upload_stream_in_chunks_request_exception_logs_and_recovers(
 )
 def test_upload_stream_in_chunks_bad_request(mock_verify: Mock) -> None:
     """Test that bad status responses call raise_for_status and trigger resume."""
-    config = AppConfig()  # type: ignore[call-arg]
+    config = ConnectorConfig()  # type: ignore[call-arg]
 
     with utils.sharepoint_connector_patches():
         connector = SharePointConnector(config=config)

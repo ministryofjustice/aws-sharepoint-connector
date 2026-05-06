@@ -1,6 +1,6 @@
 """Config module.
 
-This file defines the AppConfig class, which loads and validates
+This file defines the ConnectorConfig class, which loads and validates
 all environment-based settings — including
 Azure AD credentials, SharePoint settings, and S3 information.
 
@@ -16,7 +16,7 @@ from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppConfig(BaseSettings):
+class ConnectorConfig(BaseSettings):
     """Application configuration container.
 
     Each field corresponds to a setting that can be provided either
