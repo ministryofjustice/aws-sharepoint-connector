@@ -73,7 +73,7 @@ class UploadToSharePointEngine(Engine):
             None
 
         """
-        log.info("Uploading file to SharePoint...")
+        log.info("Uploading %s bytes to SharePoint...", len(content))
         self.sharepoint_connector.create_upload_url()
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
@@ -97,12 +97,14 @@ class UploadToS3Engine(Engine):
             log.info("Downloading file from SharePoint...")
             self.sharepoint_connector.create_download_url()
             return self.sharepoint_connector.fetch_file()
+        except UploadError:
+            raise
         except Exception as exc:
             err = f"Failed to download file from SharePoint: {exc}"
             raise UploadError(err) from exc
 
     def upload_file(self, content: bytes) -> None:
-        """Upload a file to SharePoint.
+        """Upload a file to S3 and verify the uploaded object.
 
         Args:
             content (bytes): The content of the file to upload as bytes.
@@ -111,5 +113,12 @@ class UploadToS3Engine(Engine):
             None
 
         """
-        log.info("Uploading file to S3...")
+        log.info(
+            "Uploading %s bytes to S3 bucket '%s' with key '%s'...",
+            len(content),
+            self.config.S3_BUCKET,
+            self.config.FILE_KEY,
+        )
         self.s3_connector.upload_to_s3(content)
+        self.s3_connector.verify_uploaded_object(expected_size=len(content))
+        log.info("S3 upload verification succeeded.")
