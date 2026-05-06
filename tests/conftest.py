@@ -31,10 +31,10 @@ def set_env_vars(monkeypatch_session: pytest.MonkeyPatch) -> None:
         "SECRET_AZURE_CLIENT_SECRET": "fake-client-secret",  # pragma: allowlist secret
         "SP_SITE_NAME": "fake-site-name",
         "SP_LIBRARY_NAME": "Documents",
-        "SP_FOLDER_PATH": "fake-folder-path",
+        "SP_FOLDER_PATH": "fake/folder/path",
         "SP_FILE_NAME": "fake-file.csv",
         "S3_BUCKET": "fake-bucket",
-        "FILE_KEY": "directory/fake-file.csv",
+        "FILE_KEY": "fake-file.csv",
         "MODE": "write_to_s3",
     }
 

@@ -62,11 +62,15 @@ def test_e2e_write_to_sharepoint(
     extra_post_side_effects = [
         utils.mock_upload_url_response() for _ in range(num_files)
     ]
+    expected_payloads = [create_test_data(file_size_mb) for file_size_mb in file_sizes]
     extra_get_side_effects = [
-        utils.mock_verify_uploaded_file_response(200, config.FILE_KEY)
-        for _ in range(num_files)
+        utils.mock_verify_uploaded_file_response(
+            200,
+            config.SP_FILE_NAME,
+            len(expected_payload),
+        )
+        for expected_payload in expected_payloads
     ]
-    expected_payloads: list[bytes] = []
 
     with (
         utils.sharepoint_connector_patches(
@@ -88,14 +92,12 @@ def test_e2e_write_to_sharepoint(
     ):
         eng = engine.UploadToSharePointEngine(config)
 
-        for file_size_mb in file_sizes:
-            data = create_test_data(file_size_mb)
-            expected_payloads.append(data)
+        for data in expected_payloads:
             s3.put_object(Bucket=config.S3_BUCKET, Key=config.FILE_KEY, Body=data)
             content = eng.download_file()
             eng.upload_file(content)
 
-    assert mock_post.call_count == 1 + num_files
+    assert mock_post.call_count == num_files
     assert mock_get.call_count == 3 + num_files
     assert mock_session_get.call_count == num_files
     assert mock_session_put.call_count == total_chunk_put_calls
@@ -145,5 +147,5 @@ def test_e2e_write_to_s3(
             uploaded = s3.get_object(Bucket=config.S3_BUCKET, Key=config.FILE_KEY)
             assert uploaded["Body"].read() == expected_payload
 
-    assert mock_post.call_count == 1
+    assert mock_post.call_count == 0
     assert mock_get.call_count == 3 + num_files

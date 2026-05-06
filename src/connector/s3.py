@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+from connector.exceptions import UploadError
 
 
 @dataclass
@@ -35,4 +38,28 @@ class S3Connector:
             None
 
         """
-        self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
+        try:
+            self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
+        except (BotoCoreError, ClientError) as exc:
+            err = f"Failed to upload object to s3://{self.bucket}/{self.key}: {exc}"
+            raise UploadError(err) from exc
+
+    def verify_uploaded_object(self, expected_size: int) -> None:
+        """Verify object exists in S3 and matches expected byte size."""
+        try:
+            metadata = self.client.head_object(Bucket=self.bucket, Key=self.key)
+        except (BotoCoreError, ClientError) as exc:
+            err = (
+                "Failed to verify uploaded S3 object "
+                f"s3://{self.bucket}/{self.key}: {exc}"
+            )
+            raise UploadError(err) from exc
+
+        actual_size = metadata.get("ContentLength")
+        if actual_size != expected_size:
+            err = (
+                "Verification failed for uploaded S3 object "
+                f"s3://{self.bucket}/{self.key}: expected {expected_size} bytes, "
+                f"got {actual_size} bytes"
+            )
+            raise UploadError(err)

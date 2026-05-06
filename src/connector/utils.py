@@ -12,10 +12,11 @@ def setup_logger() -> logging.Logger:
     """Return a logger object and an io stream of the data that is logged."""
     log = logging.getLogger("s3-sharepoint")
     log.setLevel(logging.INFO)
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
+    if not log.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
 
     return log
 

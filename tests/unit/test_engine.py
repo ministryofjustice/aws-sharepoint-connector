@@ -78,7 +78,7 @@ def test_upload_sharepoint_upload_file_success() -> None:
         utils.sharepoint_connector_patches(
             extra_post_side_effects=[utils.mock_upload_url_response()],
             extra_get_side_effects=[
-                utils.mock_verify_uploaded_file_response(200, config.FILE_KEY),
+                utils.mock_verify_uploaded_file_response(200, config.SP_FILE_NAME, 12),
             ],
         ) as (_, mock_get, _),
         patch(
@@ -113,7 +113,7 @@ def test_upload_s3_download_file_success() -> None:
 
     assert (
         eng.sharepoint_connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
     )
     assert data == b'{"content": "fake-file-content"}'
 
@@ -134,7 +134,7 @@ def test_upload_s3_download_file_error() -> None:
 
     assert (
         eng.sharepoint_connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake-folder-path/directory/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
     )
 
 

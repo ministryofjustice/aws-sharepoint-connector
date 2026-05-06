@@ -1,9 +1,10 @@
 """SharePoint connector for handling interactions with Microsoft Graph API."""
 
 import logging
+import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import quote
 
 import requests
@@ -15,11 +16,14 @@ from connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
-    SCOPE,
+    RETRYABLE_ERROR_CODES,
     SHAREPOINT_DOMAIN,
 )
 from connector.exceptions import UploadError
 from connector.utils import build_retry_session
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 log = logging.getLogger("s3-sharepoint")
 
@@ -34,12 +38,60 @@ class SharePointConnector(BaseModel):
     upload_url: str = Field(default="", init=False)
     download_url: str = Field(default="", init=False)
     file_path: str = Field(default="", init=False)
-    folder_path: str = Field(default="", init=False)
+
+    def _request_with_retry(
+        self,
+        method: Literal["GET", "POST"],
+        url: str,
+        *,
+        max_attempts: int = 3,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> requests.Response:
+        """Issue a GET/POST request with bounded retries for transient failures."""
+        if method == "GET":
+            request_fn: Callable[..., requests.Response] = requests.get
+        elif method == "POST":
+            request_fn = requests.post
+        else:
+            err = f"Unsupported HTTP method: {method}"
+            raise ValueError(err)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = request_fn(url, **kwargs)
+                if (
+                    response.status_code in RETRYABLE_ERROR_CODES
+                    and attempt < max_attempts
+                ):
+                    log.warning(
+                        "%s %s returned %s (attempt %s/%s), retrying...",
+                        method,
+                        url,
+                        response.status_code,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(0.5 * attempt)
+                else:
+                    return response
+            except requests.RequestException:
+                if attempt == max_attempts:
+                    raise
+                log.warning(
+                    "%s %s failed (attempt %s/%s), retrying...",
+                    method,
+                    url,
+                    attempt,
+                    max_attempts,
+                )
+                time.sleep(0.5 * attempt)
+
+        err = f"Failed to execute {method} request to {url}"
+        raise UploadError(err)
 
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
-        self.file_path = f"{self.config.SP_FOLDER_PATH}{self.config.FILE_KEY}"
-        self.folder_path = str(Path(self.file_path).parent).strip("/")
+        self.file_path = f"{self.config.SP_FOLDER_PATH}{self.config.SP_FILE_NAME}"
         self.set_graph_headers()
         self.set_drive_id()
         self.set_base_url()
@@ -80,7 +132,9 @@ class SharePointConnector(BaseModel):
             f"{quote(self.config.SP_FOLDER_PATH.strip('/'), safe='/')}"
         )
         try:
-            folder_resp = requests.get(folder_meta_url, headers=headers, timeout=30)
+            folder_resp = self._request_with_retry(
+                "GET", folder_meta_url, headers=headers, timeout=30
+            )
             if folder_resp.status_code == DOES_NOT_EXIST_CODE:
                 err = (
                     f"Destination folder does not exist: '{self.config.SP_FOLDER_PATH}'"
@@ -108,31 +162,15 @@ class SharePointConnector(BaseModel):
             str: The ID of the SharePoint site.
 
         """
-        token_endpoint = f"https://login.microsoftonline.com/{self.config.SECRET_AZURE_TENANT_ID}/oauth2/v2.0/token"
-
-        token_data = {
-            "client_id": self.config.SECRET_AZURE_CLIENT_ID.get_secret_value(),
-            "scope": SCOPE,
-            "client_secret": self.config.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
-            "grant_type": "client_credentials",
-        }
-
-        token_response = requests.post(token_endpoint, data=token_data, timeout=60)
-        token_response.raise_for_status()
-
-        access_token = token_response.json().get("access_token")
-
         site_path = f"/sites/{self.config.SP_SITE_NAME}"
 
-        # Construct Graph API URL
         site_url = (
             f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_DOMAIN}{site_path}"
         )
 
-        # Call Graph API
-        headers = {"Authorization": f"Bearer {access_token}"}
-
-        site_response = requests.get(site_url, headers=headers, timeout=60)
+        site_response = self._request_with_retry(
+            "GET", site_url, headers=self.headers, timeout=60
+        )
 
         site_response.raise_for_status()
 
@@ -197,8 +235,10 @@ class SharePointConnector(BaseModel):
                 "name": Path(self.file_path).name,
             }
         }
-        session_resp = requests.post(
-            f"{self.base_url}/createUploadSession",
+        upload_session_url = f"{self.base_url}/createUploadSession"
+        session_resp = self._request_with_retry(
+            "POST",
+            upload_session_url,
             headers=self.headers,
             json=session_body,
             timeout=30,
@@ -239,8 +279,11 @@ class SharePointConnector(BaseModel):
         log.info("Fetching file from SharePoint...")
 
         try:
-            file_resp = requests.get(
-                self.download_url, headers=self.headers, timeout=30
+            file_resp = self._request_with_retry(
+                "GET",
+                self.download_url,
+                headers=self.headers,
+                timeout=30,
             )
             if file_resp.status_code == DOES_NOT_EXIST_CODE:
                 err = f"File not found in SharePoint: '{self.file_path}'"
@@ -253,11 +296,11 @@ class SharePointConnector(BaseModel):
             err = f"Failed to fetch file from SharePoint: {exc}"
             raise UploadError(err) from exc
 
-    def verify_uploaded_file(self) -> None:
+    def verify_uploaded_file(self, expected_size: int) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
 
         Args:
-            None
+            expected_size (int): Expected size in bytes for the uploaded file.
 
         Returns:
             None
@@ -275,18 +318,31 @@ class SharePointConnector(BaseModel):
                     f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root/children"
                     f"?$select=name,size,file"
                 )
-            resp = requests.get(children_url, headers=self.headers, timeout=30)
+            resp = self._request_with_retry(
+                "GET", children_url, headers=self.headers, timeout=30
+            )
             resp.raise_for_status()
             items = resp.json().get("value", [])
-            if any(
-                i.get("name") == self.config.FILE_KEY and "file" in i for i in items
-            ):
+            expected_name = Path(self.file_path).name
+            matched_item = next(
+                (
+                    item
+                    for item in items
+                    if item.get("name") == expected_name and "file" in item
+                ),
+                None,
+            )
+            if matched_item is not None and matched_item.get("size") == expected_size:
                 log.info(
-                    "Verified that file '%s' has been uploaded",
-                    self.config.FILE_KEY,
+                    "Verified uploaded file '%s' (%s bytes)",
+                    expected_name,
+                    expected_size,
                 )
                 return
-            err = f"Verification failed: file '{self.config.FILE_KEY}' not found."
+            err = (
+                f"Verification failed: file '{expected_name}' not found with size "
+                f"{expected_size} bytes."
+            )
             raise UploadError(err)
         except requests.RequestException as exc:
             err = f"Failed to verify uploaded file: {exc}"
@@ -367,28 +423,23 @@ class SharePointConnector(BaseModel):
                 if r.status_code >= BAD_REQUEST_CODE:
                     r.raise_for_status()
             except requests.exceptions.RequestException:
-                if log:
-                    log.warning("Chunk upload failed, attempting to resume...")
+                log.warning("Chunk upload failed, attempting to resume...")
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
-                    if log:
-                        log.info(
-                            "Resuming from %s after partial upload", f"{resume_at:,}"
-                        )
+                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
                     file.seek(resume_at)
                     start = resume_at
                 continue
 
             start += len(chunk)
-            if log:
-                pct = int((start / file_size) * 100)
-                if pct // 10 > last_logged_pct // 10:
-                    log.info(
-                        "Uploaded %s/%s bytes (%s%%)",
-                        f"{start:,}",
-                        f"{file_size:,}",
-                        pct,
-                    )
-                    last_logged_pct = pct
+            pct = int((start / file_size) * 100)
+            if pct // 10 > last_logged_pct // 10:
+                log.info(
+                    "Uploaded %s/%s bytes (%s%%)",
+                    f"{start:,}",
+                    f"{file_size:,}",
+                    pct,
+                )
+                last_logged_pct = pct
 
-        self.verify_uploaded_file()
+        self.verify_uploaded_file(expected_size=file_size)
