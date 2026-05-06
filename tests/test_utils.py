@@ -35,7 +35,10 @@ def build_response(
 
 def mock_get_token(_: str) -> AccessToken:
     """Mock get_token method of ClientSecretCredential."""
-    return AccessToken(token="fake-token", expires_on=9999999999)  # noqa: S106
+    return AccessToken(
+        token="fake-token",  # noqa: S106  noqa: B106
+        expires_on=9999999999,
+    )
 
 
 def mock_drive_id_response(
