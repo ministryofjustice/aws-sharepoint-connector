@@ -14,6 +14,6 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
-    uses: ministryofjustice/analytical-platform-airflow-github-actions/.github/workflows/shared-scan-container.yml@cb9be5df20e49639fc617523d04b12059b266450 # v4.0.0
+    uses: ministryofjustice/analytical-platform-airflow-github-actions/.github/workflows/shared-scan-container.yml@42bc0159e43ebec0a6eb944c875d78f28ab6fa8a # v5.0.0
     with:
       runtime: python
