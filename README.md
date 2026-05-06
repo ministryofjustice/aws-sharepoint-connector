@@ -96,9 +96,11 @@ MODE=write_to_sharepoint
 ## Prerequisites
 
 ### Sharepoint site
+
 You will require a Sharepoint site to serve as the source or destination for files. This can be a pre-existing Sharepoint site, though you should be mindful of who will have access to the data.
 
 ### Azure app registration
+
 An Azure app has to be registered in Entra ID. This will be bespoke to your project and provide the connection to the Sharepoint site and is what the connector will authenticate into via the secret key. To request a new Azure app and have it connected to your Sharepoint site, raise a demand request by following the instructions [here](https://user-guide.staff-identity.service.justice.gov.uk/documentation/guidance/appreg.html#application-registrations-sso).
 
 The app will require these permissions:
@@ -106,6 +108,7 @@ The app will require these permissions:
 - `Files.ReadWrite.All`
 
 ### Azure app details & secret
+
 You can view your app registrations [here](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
 
 Open up the app registration and the tenant ID will be available as `Directory (tenant) ID`.
@@ -115,12 +118,13 @@ The client ID is available as `Application (client) ID`.
 The client secret is available from `manage` -> `certificates and secrets` - you may not be able to view it and instead may be sent it when the app is created.
 
 ### AWS access
+
 If running via airflow, or from within another repo that is running via airflow, then standard AP credentials and access management apply and will grant access to s3.
 
 ### Technical requirements
+
 - Python `3.13+`
 - [uv](https://docs.astral.sh/uv/) for dependency management
-
 
 ## Installation
 
@@ -161,7 +165,6 @@ Equivalent direct module invocation:
 ```bash
 uv run python src/connector/main.py
 ```
-
 
 ### Run with Docker
 
