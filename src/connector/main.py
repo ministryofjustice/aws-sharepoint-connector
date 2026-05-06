@@ -1,5 +1,7 @@
 """Main entry point for the SharePoint connector application."""
 
+import os
+
 from connector.config import AppConfig
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
 from connector.exceptions import UploadError
@@ -13,9 +15,40 @@ ENGINE_MAP: dict[str, type[UploadToSharePointEngine | UploadToS3Engine]] = {
 }
 
 
-def main() -> None:
-    """Entry point for the connector application."""
+def setup_environment_variables(non_secret_env_vars: dict[str, str]) -> None:
+    """Set up environment variables from a dictionary.
+
+    Args:
+        non_secret_env_vars (dict[str, str]): Environment variable names and values
+        passed by calling code
+
+    Returns:
+        None
+
+    """
+    for var_name, var_value in non_secret_env_vars.items():
+        if var_value is not None:
+            os.environ[var_name] = var_value
+
+
+def main(
+    non_secret_env_vars: dict[str, str] | None = None,
+) -> None:
+    """Entry point for the connector application.
+
+    Args:
+        non_secret_env_vars (dict[str, str] | None): Environment variable names and
+        values passed by calling code. No secret values should be passed here.
+
+    Returns:
+        None
+
+    """
     log.info("Starting file transfer process...")
+
+    if non_secret_env_vars:
+        setup_environment_variables(non_secret_env_vars)
+
     config = AppConfig()  # type: ignore[call-arg]
 
     log.info(

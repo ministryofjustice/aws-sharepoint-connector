@@ -7,8 +7,26 @@ import pytest
 
 from connector import engine
 from connector.exceptions import UploadError
-from connector.main import main
+from connector.main import main, setup_environment_variables
 from tests.test_utils import sharepoint_connector_patches
+
+
+def test_setup_environment_variables() -> None:
+    """Test that the setup_environment_variables function sets environment variables."""
+    env_vars = {
+        "SP_FOLDER_PATH": "test/folder/path/",
+        "SP_SITE_NAME": "test-site-name",
+        "SP_LIBRARY_NAME": "TestDocuments",
+        "SP_FILE_NAME": "test-file.csv",
+        "S3_BUCKET": "test-bucket",
+        "FILE_KEY": "test-file.csv",
+        "MODE": "write_to_s3",
+    }
+
+    setup_environment_variables(env_vars)
+
+    for var_name, var_value in env_vars.items():
+        assert os.environ[var_name] == var_value
 
 
 @pytest.mark.parametrize(
@@ -77,3 +95,37 @@ def test_main_upload_error() -> None:
         main()
 
     assert "Mock upload error" in str(exc.value)
+
+
+def test_main_provide_env_vars() -> None:
+    """Test that the main function correctly sets environment variables passed to it."""
+    env_vars = {
+        "SP_FOLDER_PATH": "new/test/folder/",
+        "SP_SITE_NAME": "new-test-site-name",
+        "SP_LIBRARY_NAME": "NewDocuments",
+        "SP_FILE_NAME": "new-test-file.csv",
+        "S3_BUCKET": "new-test-bucket",
+        "FILE_KEY": "new-test-file.csv",
+        "MODE": "write_to_s3",
+    }
+
+    with (
+        sharepoint_connector_patches(),
+        patch(
+            "connector.engine.UploadToS3Engine.download_file",
+            autospec=True,
+            return_value=b"data",
+        ),
+        patch(
+            "connector.engine.UploadToS3Engine.upload_file",
+            autospec=True,
+            return_value=None,
+        ),
+        patch(
+            "connector.main.setup_environment_variables",
+        ) as mock_setup_env_vars,
+    ):
+        main(non_secret_env_vars=env_vars)
+
+    assert mock_setup_env_vars.call_count == 1
+    assert mock_setup_env_vars.call_args[0][0] == env_vars
