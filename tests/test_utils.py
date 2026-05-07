@@ -1,7 +1,7 @@
 """Utility functions and fixtures for unit tests."""
 
 import json
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, Literal
 from unittest.mock import Mock, patch
@@ -18,79 +18,20 @@ def create_s3_to_sp_movement_plan() -> tuple[
     list[dict[str, dict[str, str]]], DataMovementPlan
 ]:
     """Return a sample S3 to SharePoint movement plan."""
-    plans = [
+    plans: list[dict[str, dict[str, str]]] = [
         {
-            "source": {
-                "bucket": "my-source-bucket",
-                "key": "path/to/file1.csv",
-            },
+            "source": {"bucket": "my-source-bucket", "key": f"path/to/file{i}.csv"},
             "destination": {
-                "site": "analytics-site",
+                "site": "analytics-site" if i < 3 else f"analytics-site-{(i % 2) + 1}",
                 "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file1.csv",
+                "directory": "reports/2026/" if i < 6 else "",
+                "filename": f"file{i}.csv",
             },
-        },
-        {
-            "source": {
-                "bucket": "my-source-bucket",
-                "key": "path/to/file2.csv",
-            },
-            "destination": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file2.csv",
-            },
-        },
-        {
-            "source": {
-                "bucket": "my-source-bucket",
-                "key": "path/to/file3.csv",
-            },
-            "destination": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file3.csv",
-            },
-        },
-        {
-            "source": {
-                "bucket": "my-source-bucket-2",
-                "key": "path/to/file4.csv",
-            },
-            "destination": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file4.csv",
-            },
-        },
-        {
-            "source": {
-                "bucket": "my-source-bucket-2",
-                "key": "path/to/file5.csv",
-            },
-            "destination": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file5.csv",
-            },
-        },
-        {
-            "source": {
-                "bucket": "my-source-bucket-2",
-                "key": "path/to/file6.csv",
-            },
-            "destination": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "filename": "file6.csv",
-            },
-        },
+        }
+        for i in range(1, 7)
     ]
+
+    plans[5]["destination"] = {k: v for k, v in plans[5]["destination"].items() if v}
 
     all_plans = [S3ToSPMovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
     return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
@@ -100,79 +41,27 @@ def create_sp_to_s3_movement_plan() -> tuple[
     list[dict[str, dict[str, str]]], DataMovementPlan
 ]:
     """Return a sample SharePoint to S3 movement plan."""
-    plans = [
+    plans: list[dict[str, dict[str, str]]] = [
         {
             "source": {
-                "site": "analytics-site",
+                "site": "analytics-site" if i < 2 or i == 3 else "analytics-site-2",
                 "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file1.csv",
+                "directory": "reports/2026/" if i < 6 else "",
+                "filename": f"file{i}.csv",
             },
             "destination": {
-                "bucket": "my-destination-bucket",
-                "key": "path/to/file1.csv",
+                "bucket": (
+                    "my-destination-bucket"
+                    if i < 3
+                    else f"my-destination-bucket-{(i % 2) + 1}"
+                ),
+                "key": f"path/to/file{i}.csv",
             },
-        },
-        {
-            "source": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file2.csv",
-            },
-            "destination": {
-                "bucket": "my-destination-bucket",
-                "key": "path/to/file2.csv",
-            },
-        },
-        {
-            "source": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file3.csv",
-            },
-            "destination": {
-                "bucket": "my-destination-bucket",
-                "key": "path/to/file3.csv",
-            },
-        },
-        {
-            "source": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file4.csv",
-            },
-            "destination": {
-                "bucket": "my-destination-bucket-2",
-                "key": "path/to/file4.csv",
-            },
-        },
-        {
-            "source": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file5.csv",
-            },
-            "destination": {
-                "bucket": "my-destination-bucket-2",
-                "key": "path/to/file5.csv",
-            },
-        },
-        {
-            "source": {
-                "site": "analytics-site-2",
-                "library": "Documents",
-                "filename": "file6.csv",
-            },
-            "destination": {
-                "bucket": "my-destination-bucket-2",
-                "key": "path/to/file6.csv",
-            },
-        },
+        }
+        for i in range(1, 7)
     ]
+    # Remove directory for file6 if it was set to None
+    plans[5]["source"] = {k: v for k, v in plans[5]["source"].items() if v is not None}
 
     all_plans = [SPToS3MovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
     return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
@@ -284,16 +173,6 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
     return build_response(json_body={"nextExpectedRanges": [f"{start}-{end}"]})
 
 
-def _make_drive_id_response() -> Callable[[], Response]:
-    """Factory for creating drive_id response callables."""
-    return lambda: mock_drive_id_response("complete")
-
-
-def _make_ensure_folder_response() -> Callable[[], Response]:
-    """Factory for creating ensure_folder response callables."""
-    return lambda: mock_ensure_destination_folder_response("folder")
-
-
 @contextmanager
 def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,
@@ -304,8 +183,10 @@ def sharepoint_connector_patches(
 
     Args:
         extra_post_side_effects: Additional POST responses beyond the defaults.
-        extra_get_side_effects: Additional GET responses (e.g., verify responses) beyond setup.
-        num_files: Number of files being processed. Multiplies setup responses for each.
+        extra_get_side_effects: Additional GET responses (e.g., verify responses)
+            beyond setup.
+        num_files: Number of files being processed. Multiplies setup responses
+            for each.
 
     """
     post_side_effects: list[Response] = []

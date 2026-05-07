@@ -59,7 +59,7 @@ def test_parse_data_movement_plan_from_env_accepts_python_literal() -> None:
     assert parsed == [plan]
 
 
-def test_parse_data_movement_plan_from_env_raises_for_unparseable_value() -> None:
+def test_parse_data_movement_plan_from_env_raises_for_unparsable_value() -> None:
     """It raises ValueError when input is neither valid JSON nor literal."""
     with pytest.raises(
         ValueError,

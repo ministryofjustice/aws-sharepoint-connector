@@ -33,7 +33,7 @@ def test_e2e_write_to_s3_single_and_batch(file_count: int, s3: boto3.client) -> 
 
     # Select plans based on file count
     selected_plans_dicts = plans_dicts[:file_count]
-    selected_plans = [SPToS3MovementPlan(**p) for p in selected_plans_dicts]  # type: ignore
+    selected_plans = [SPToS3MovementPlan(**p) for p in selected_plans_dicts]  # type: ignore[arg-type]
 
     for plan in selected_plans:
         if plan.s3_bucket not in [b["Name"] for b in s3.list_buckets()["Buckets"]]:
@@ -47,7 +47,7 @@ def test_e2e_write_to_s3_single_and_batch(file_count: int, s3: boto3.client) -> 
 
     # Mock SharePoint GET responses in order:
     # - For each file: site_id → drive_id → ensure_folder → download (4 responses)
-    get_mocks: list = []
+    get_mocks: list[Response] = []
     for i in range(file_count):
         # Use factory functions to create fresh Response objects
         get_mocks.append(utils.mock_site_id_response())
@@ -64,7 +64,7 @@ def test_e2e_write_to_s3_single_and_batch(file_count: int, s3: boto3.client) -> 
     ):
         run(mode="write_to_s3", data_movement_plan=selected_plans_dicts)
 
-    for plan, expected_payload in zip(selected_plans, expected_payloads):
+    for plan, expected_payload in zip(selected_plans, expected_payloads, strict=True):
         obj = s3.get_object(Bucket=plan.s3_bucket, Key=plan.s3_file_key)
         actual_payload = obj["Body"].read()
         assert actual_payload == expected_payload, (
@@ -80,7 +80,7 @@ def test_e2e_write_to_sharepoint_single_and_batch(
     plans_dicts, _ = utils.create_s3_to_sp_movement_plan()
 
     selected_plans_dicts = plans_dicts[:file_count]
-    selected_plans = [S3ToSPMovementPlan(**p) for p in selected_plans_dicts]  # type: ignore
+    selected_plans = [S3ToSPMovementPlan(**p) for p in selected_plans_dicts]  # type: ignore[arg-type]
 
     file_sizes_mb = [1] * file_count
     expected_payloads = [create_test_data(size) for size in file_sizes_mb]
@@ -92,12 +92,12 @@ def test_e2e_write_to_sharepoint_single_and_batch(
                 CreateBucketConfiguration={"LocationConstraint": "eu-west-2"},
             )
 
-    for plan, payload in zip(selected_plans, expected_payloads):
+    for plan, payload in zip(selected_plans, expected_payloads, strict=True):
         s3.put_object(Bucket=plan.s3_bucket, Key=plan.s3_file_key, Body=payload)
 
     # Build GET mock responses.
     # For each file: setup (site_id, drive_id, ensure_folder) + verify
-    get_mocks: list = []
+    get_mocks: list[Response] = []
     for i in range(file_count):
         size_mb = file_sizes_mb[i]
         get_mocks.append(utils.mock_site_id_response())

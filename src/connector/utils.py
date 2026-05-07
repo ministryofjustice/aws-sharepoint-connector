@@ -12,7 +12,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from connector.constants import RETRYABLE_ERROR_CODES
-from connector.exceptions import UploadError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,5 +119,6 @@ def request_with_retry(
             )
             time.sleep(0.5 * attempt)
 
-    err = f"Failed to execute {method} request to {url}"  # pragma: no cover
-    raise UploadError(err)  # pragma: no cover
+    # Unreachable: loop always returns or raises
+    msg = f"Failed to execute {method} request to {url}"
+    raise RuntimeError(msg)  # pragma: no cover
