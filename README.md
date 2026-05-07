@@ -9,7 +9,7 @@
 
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
-Operates in two modes: download from SharePoint to S3 (write_to_s3), or upload from S3 to SharePoint (write_to_sharepoint).
+Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload from S3 to SharePoint (`write_to_sharepoint`). Supports both single-file and batch transfers via unified `DATA_MOVEMENT_PLAN` configuration.
 
 ## Table of contents
 
@@ -19,78 +19,125 @@ Operates in two modes: download from SharePoint to S3 (write_to_s3), or upload f
 - [Installation](#installation)
 - [How to run](#how-to-run)
 	- [Run locally (CLI)](#run-locally-cli)
-	- [Run with Docker](#run-with-docker)
-	- [Use as an import in another Python library](#use-as-an-import-in-another-python-library)
+	- [Programmatic API](#programmatic-api)
+- [Error handling and retries](#error-handling-and-retries)
 - [How to modify or extend](#how-to-modify-or-extend)
-- [Operational notes](#operational-notes)
 - [Troubleshooting](#troubleshooting)
 - [Security considerations](#security-considerations)
 - [License](#license)
 
 ## Architecture and flow
 
-High-level runtime path:
+### High level process flow
 
-1. Load configuration with `SecretConfig` (`src/connector/config.py`).
-2. Select engine via `MODE` variable:
-	- `UploadToS3Engine`
-	- `UploadToSharePointEngine`
-3. Download file from source system.
-4. Upload file to destination system.
-5. Verify file has been correctly written
+1. Load configuration from environment variables / function arguments.
+2. Parse and validate `DATA_MOVEMENT_PLAN` with `DataMovementPlan` (`src/connector/config.py`).
+3. Authenticate to Azure Graph API and AWS S3.
+4. For each file in the batch:
+	- Download from source system (SharePoint or S3).
+	- Upload to destination system (S3 or SharePoint).
+	- Verify destination file exists with matching size.
+	- Log transfer status with file index and details.
+5. Exit with error if any file fails; otherwise exit successfully.
 
-Core components:
+### Transfer Modes
 
-- `src/connector/main.py`: Entrypoint and engine selection.
-- `src/connector/config.py`: Strongly typed environment settings via Pydantic.
-- `src/connector/engine.py`: Transfer orchestration for each mode.
-- `src/connector/sharepoint.py`: SharePoint Graph API connector.
-- `src/connector/s3.py`: S3 object read/write connector.
+- **`write_to_s3`**: Download from SharePoint → Upload to S3
+- **`write_to_sharepoint`**: Download from S3 → Upload to SharePoint
+
+### Core Components
+
+- `src/connector/main.py`: Entrypoint, CLI wrapper, batch orchestration.
+- `src/connector/config.py`: Pydantic models for validated configuration.
+- `src/connector/engine.py`: Abstract transfer logic.
+- `src/connector/sharepoint.py`: SharePoint connector.
+- `src/connector/s3.py`: AWS S3 connector.
+- `src/connector/auth.py`: Azure authentication and Graph utilities.
+- `src/connector/utils.py`: HTTP retry logic and environment parsing.
 
 ## Configuration
 
-All runtime configuration is environment-variable driven (or loaded from a local `.env` file during development).
+All configuration is parsed by the config classes in `src/connector/config.py` and can be supplied via:
+- Environment variables
+- Arguments passed to the `run` entry point in `src/connector/main.py`
+- A .env file
 
-| Variable | Required | Description | Example |
-|---|---|---|---|
-| `SECRET_AZURE_TENANT_ID` | Yes | Azure tenant UUID used for Graph auth | `00000000-0000-0000-0000-000000000000` |
-| `SECRET_AZURE_CLIENT_ID` | Yes | Azure app registration client ID | `11111111-1111-1111-1111-111111111111` |
-| `SECRET_AZURE_CLIENT_SECRET` | Yes | Azure app registration client secret | `super-secret` |
-| `SP_SITE_NAME` | Yes | SharePoint site path segment used by Graph site lookup | `analytics-site` |
-| `SP_LIBRARY_NAME` | Yes | Document library name in SharePoint | `Documents` |
-| `SP_FOLDER_PATH` | Yes | Target/source SharePoint folder path (trailing `/` auto-normalized) | `exports/reports/` |
-| `SP_FILE_NAME` | Yes | Name of the file to be read from/written to Sharepoint | `daily_report.csv` |
-| `S3_BUCKET` | Yes | S3 bucket name | `my-transfer-bucket` |
-| `FILE_KEY` | Yes | s3 object key for the specific file to read or write to | `daily_report.csv` |
-| `MODE` | Yes | Transfer direction | `write_to_s3` or `write_to_sharepoint` |
+### Required Environment Variables
 
-### How to define the SharePoint path variables
+Can ONLY be provided as environment variables from airflow (or .env)
 
-Given a full SharePoint file URL of:
+| Variable | Type | Description |
+|---|---|---|
+| `SECRET_AZURE_TENANT_ID` | string | Azure tenant UUID for Graph API authentication |
+| `SECRET_AZURE_CLIENT_ID` | string | Azure app registration client ID |
+| `SECRET_AZURE_CLIENT_SECRET` | string | Azure app registration client secret (store in secret manager) |
 
-`https://justiceuk.sharepoint.com/sites/analytics-site/Documents/exports/reports/2026/04/daily_report.csv`
+### Additional Variables
 
-- `SP_SITE_NAME=analytics-site`
-- `SP_LIBRARY_NAME=Documents`
-- `SP_FOLDER_PATH=exports/reports/2026/04/`
-- `FILE_KEY=daily_report.csv`
+Can be provided as environment variables or passed directly to `run`
 
-### Example `.env`
+| Variable | Type | Description |
+|---|---|---|
+| `MODE` | string | Transfer direction: `write_to_s3` or `write_to_sharepoint` |
+| `DATA_MOVEMENT_PLAN` | JSON array | List of file transfer specifications (see [Data Movement Plan Schema](#data-movement-plan-schema)) |
 
-```env
-SECRET_AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
-SECRET_AZURE_CLIENT_ID=11111111-1111-1111-1111-111111111111
-SECRET_AZURE_CLIENT_SECRET=replace_me
+### Data Movement Plan Schema
 
-SP_SITE_NAME=analytics-site
-SP_LIBRARY_NAME=Documents
-SP_FOLDER_PATH=exports/reports/
-SP_FILE_NAME=daily_report.csv
+The `DATA_MOVEMENT_PLAN` must contain a JSON array of file transfer objects.
 
-S3_BUCKET=my-transfer-bucket
-FILE_KEY=daily_report.csv
+| Variable | Type | Description |
+|---|---|---|
+| `site` | string | Name of the Sharepoint site |
+| `library` | string | Name of the document storage library |
+| `directory` | string | Folder directories within the library |
+| `filename` | string | Name of the file to read/write in Sharepoint |
+| `bucket` | string | s3 bucket name |
+| `key` | string | Full s3 file key to read/write |
 
-MODE=write_to_sharepoint
+
+### Example: Sharepoint → S3 (single file)
+
+For a Sharepoint file located at:
+https://justiceuk.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv
+
+To copy to an s3 location of: s3://my-bucket/path/to/daily_report.csv
+
+```json
+data_movement_plan=[
+  {
+    "source": {
+      "site": "analytics-site",
+      "library": "Documents",
+      "directory": "reports/2026/",
+      "filename": "daily_report.csv"
+    },
+    "destination": {
+      "bucket": "my-bucket",
+      "key": "path/to/daily_report.csv"
+    }
+  }
+]
+```
+
+### Example: S3 -> Sharepoint (single file)
+
+And to move the same file the other way
+
+```json
+data_movement_plan=[
+  {
+    "source": {
+      "bucket": "my-bucket",
+      "key": "path/to/daily_report.csv"
+    },
+    "destination": {
+      "site": "analytics-site",
+      "library": "Documents",
+      "directory": "reports/2026/",
+      "filename": "daily_report.csv"
+    }
+  }
+]
 ```
 
 ## Prerequisites
@@ -154,7 +201,7 @@ uv run pytest tests/e2e              # E2E tests (no real API calls)
 
 ### Run locally (CLI)
 
-The package defines a script entrypoint named `connector`. Define the required variables in a `.env` file or pass (the non secret ones) in as arguments.
+The package defines a script entrypoint named `connector`. Set all variables in a `.env` file.
 
 ```bash
 uv run connector
@@ -166,29 +213,44 @@ Equivalent direct module invocation:
 uv run python src/connector/main.py
 ```
 
-### Run with Docker
+### Programmatic API
 
-Build image:
+Import the `run()` function to use the connector in your Python code.
+The secret values must be present in the environment variables.
 
-```bash
-docker build -t aws-sharepoint-connector:local .
+```python
+from connector import run
+
+run(
+    mode="write_to_s3",
+    data_movement_plan=[
+      {
+        "source": {
+          "site": "analytics-site",
+          "library": "Documents",
+          "directory": "reports/2026/",
+          "filename": "daily_report.csv"
+        },
+        "destination": {
+          "bucket": "my-bucket",
+          "key": "path/to/daily_report.csv"
+        }
+      }
+    ]
+)
 ```
 
-Run container with env file:
+Or if all variables are stored in environment variables:
 
-```bash
-docker run --rm --env-file .env aws-sharepoint-connector:local
-```
+```python
+from connector import run
 
-The Docker image entrypoint is:
-
-```bash
-python src/connector/main.py
+run()
 ```
 
 ### Running from airflow
 
-Example DAG
+Example DAG using unified configuration:
 
 ```yaml
 dag:
@@ -203,19 +265,28 @@ dag:
   start_date: "2026-01-01"
   schedule: None
   env_vars:
-    SP_SITE_NAME: analytics-site
-    SP_LIBRARY_NAME: Documents
-    SP_FOLDER_PATH: exports/reports/
-    SP_FILE_NAME: daily_report.csv
-    S3_BUCKET: my-transfer-bucket
-    FILE_KEY: daily_report.csv
-    MODE: write_to_sharepoint
+    MODE: write_to_s3
+    DATA_MOVEMENT_PLAN: 'data_movement_plan=[
+      {
+        "source": {
+          "site": "analytics-site",
+          "library": "Documents",
+          "directory": "reports/2026/",
+          "filename": "daily_report.csv"
+        },
+        "destination": {
+          "bucket": "my-bucket",
+          "key": "path/to/daily_report.csv"
+        }
+      }
+    ]
+    '
   tasks:
-    move_file:
+    move_files:
       compute_profile: "general-on-demand-4vcpu-16gb"
 iam:
   s3_read_write:
-    - my-transfer-bucket
+    - my-bucket
 
 secrets:
   - azure-client-secret
@@ -230,12 +301,35 @@ tags:
   owner: [you@justice.gov.uk]
 ```
 
-## Use as an import in another Python library
+## Error handling and retries
 
-```from connector import main``` and call ```main()```.
-You must have set all required environment variables first (either via airflow, a .env file or setting os.environ directly), or pass them in as arguments to `main`.
+The connector implements robust retry logic to handle transient failures.
 
-Secret values should be set via secret manager and airflow (e.g., client secret).
+### Chunk Upload Strategy
+
+For large files, uploads are split into **10 MB chunks**:
+
+- **Max 5 consecutive failures** per chunk before aborting the entire transfer
+- **Transient errors** (429 Too Many Requests, 5xx): retried with exponential backoff
+- **Permanent errors** (4xx excluding 429): immediately raised as `UploadError` without retry
+- **File pointer reset** on every retry to ensure data consistency
+
+Example: If a 50 MB file fails on chunk 3 of 5, the transfer aborts and raises `UploadError`.
+
+### HTTP Request Retries
+
+All Graph API and HTTP calls use `request_with_retry()`:
+
+- **Max 3 attempts** per request
+- **Retryable errors**: 429 Too Many Requests, 5xx Server Errors
+- **Non-retryable errors**: 4xx Client Errors (except 429)
+- **Exponential backoff** between retries
+
+### Batch Processing Behavior
+
+- **First failure stops batch**: If file 2 of 5 fails, remaining files (3–5) are not processed
+- **Per-file logging**: Each file's status is logged with its index ("Processing file 2/5:", "Failed file 2/5:")
+- **Error includes file identity**: Batch failure messages include which file failed and why
 
 ## How to modify or extend
 
@@ -261,27 +355,32 @@ Secret values should be set via secret manager and airflow (e.g., client secret)
 - S3 calls are isolated in `src/connector/s3.py`.
 - Retry behavior for HTTP chunk uploads is managed in `src/connector/utils.py`.
 
-## Operational notes
-
-- SharePoint uploads use chunked upload sessions (`10MB` chunks).
-- Destination folder existence is validated before upload.
-- Upload verification checks that the file exists in destination folder after chunk transfer.
-- Logging is emitted to stdout for easy collection in containerized runtimes.
 
 ## Troubleshooting
 
-- `Library 'X' not found on site`: verify `SP_LIBRARY_NAME` and site permissions.
-- `Destination folder does not exist`: create `SP_FOLDER_PATH` in SharePoint first.
-- `File not found in SharePoint`: validate `SP_FOLDER_PATH` and `FILE_KEY`.
-- S3 read/write failures: check IAM policy, bucket policy, and key correctness.
-- Auth failures: verify tenant ID, client ID/secret, and Graph API app permissions.
+### Common errors and solutions
+
+- **`Library 'X' not found on site`**: Verify `library` spelling and that the app has SharePoint access via Graph API permissions (`Sites.Read.All`, `Files.ReadWrite.All`)
+- **`Destination folder does not exist`**: Create the `directory` manually in SharePoint first, or use an existing folder
+- **`File not found in SharePoint`**: Verify the file exists at the exact path `directory/filename`; check case sensitivity
+- **`S3 NoSuchBucket` or `NoSuchKey`**: Verify bucket name is correct, bucket exists in eu-west-2, and IAM principal has access
+- **`AccessDenied` (S3)**: Check IAM policy grants s3:GetObject/PutObject/HeadObject on the bucket
+- **`AADSTS65001` or Graph auth failures**: Verify app permissions (Sites.Read.All, Files.ReadWrite.All) are granted in Azure; may need admin consent
+- **`File transfer failed: Max retries exceeded`**: File chunk upload exceeded 5 consecutive failures; check network stability, S3/SharePoint availability, and file size
+- **Batch processing stops after 1 file**: This is expected behavior; fix the failed file's configuration and rerun
 
 ## Security considerations
 
-- Never commit `.env` files or secrets.
-- Prefer workload identity/managed identity where possible in runtime platforms.
-- Scope AWS IAM and Azure Graph permissions to minimum required actions.
-- Rotate client secrets regularly and store them in a secure secret manager.
+- **Never commit `.env` files or secrets**: Add `.env` to `.gitignore`
+- **Prefer managed identity**: Use workload identity or managed identity in AWS/Azure instead of storing static credentials
+- **Scope permissions tightly**:
+  - Azure: Limit app permissions to `Sites.Read.All` and `Files.ReadWrite.All` only
+  - AWS: Restrict IAM policy to specific bucket and prefix (e.g., `s3:arn:aws:s3:::bucket/prefix/*`)
+- **Rotate secrets**: Change Azure client secrets every 90 days and update secret manager
+- **Store secrets securely**: Use AWS Secrets Manager, Azure Key Vault, or Kubernetes secrets (never hardcode in env vars)
+- **Audit access**: Monitor S3 CloudTrail and SharePoint audit logs for sensitive data access
+- **Network isolation**: Consider running connector in private network with appropriate egress controls
+- **Data residency**: Ensure S3 bucket and SharePoint site comply with data residency requirements
 
 ## License
 
