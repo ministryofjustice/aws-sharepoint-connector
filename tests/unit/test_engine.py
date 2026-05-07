@@ -14,7 +14,7 @@ from tests import test_utils as utils
 
 def test_upload_sharepoint_download_file_success(s3: boto3.client) -> None:
     """Test that the method to download from s3 returns the correct data."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
     df = utils.create_test_csv()
 
@@ -47,7 +47,7 @@ def test_upload_sharepoint_download_file_error(
     exception: Exception, s3: boto3.client
 ) -> None:
     """Test that the method to download from s3 raises an UploadError."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
     df = utils.create_test_csv()
 
@@ -73,7 +73,7 @@ def test_upload_sharepoint_download_file_error(
 
 def test_upload_sharepoint_upload_file_success() -> None:
     """Test that the method to upload to SharePoint calls the correct methods."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     with (
         utils.sharepoint_connector_patches(
             extra_post_side_effects=[utils.mock_upload_url_response()],
@@ -104,7 +104,7 @@ def test_upload_sharepoint_upload_file_success() -> None:
 
 def test_upload_s3_download_file_success() -> None:
     """Test that the method to download from sharepoint returns the correct data."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     with utils.sharepoint_connector_patches(
         extra_get_side_effects=[utils.mock_fetch_file_response(200)],
     ):
@@ -120,7 +120,7 @@ def test_upload_s3_download_file_success() -> None:
 
 def test_upload_s3_download_file_error() -> None:
     """Test that the method to download from sharepoint raises an error."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     with (
         utils.sharepoint_connector_patches(),
         patch(
@@ -140,7 +140,7 @@ def test_upload_s3_download_file_error() -> None:
 
 def test_upload_s3_upload_file_success(s3: boto3.client) -> None:
     """Test that the method to upload to s3 correctly uploads the file."""
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
 
     with utils.sharepoint_connector_patches():

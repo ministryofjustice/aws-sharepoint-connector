@@ -43,7 +43,7 @@ class SharePointConnector(BaseModel):
         self.set_base_url()
 
     def set_graph_headers(self) -> None:
-        """Obtain azure token and generate headers for the sharepoint App."""
+        """Obtain Azure token and generate headers for the sharepoint App."""
         log.info("Requesting Azure Graph API token...")
 
         token = auth.get_azure_token(
@@ -166,7 +166,7 @@ class SharePointConnector(BaseModel):
         encoded_path = quote(self.file_path, safe="/")
         self.base_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:"
 
-    def create_upload_url(self) -> None:
+    def set_upload_url(self) -> None:
         """Generate the target SharePoint url for uploading to.
 
         Args:
@@ -200,7 +200,7 @@ class SharePointConnector(BaseModel):
 
         self.upload_url = url
 
-    def create_download_url(self) -> None:
+    def set_download_url(self) -> None:
         """Generate the source SharePoint url to download from.
 
         Args:

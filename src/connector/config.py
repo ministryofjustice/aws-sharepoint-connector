@@ -16,10 +16,10 @@ class SharePointFile(BaseModel):
         filename (str): The source/target file name with extension
 
     Example:
-    `https://justiceuk.sharepoint.com/sites/analytics-site/Shared%20Documents/exports/reports/2026/04/daily_report.csv`
+    `https://justiceuk.sharepoint.com/sites/analytics-site/Documents/exports/reports/2026/04/daily_report.csv`
 
     - site = analytics-site
-    - library = Shared Documents
+    - library = Documents
     - directory = exports/reports/2026/04/
     - filename = daily_report.csv
 

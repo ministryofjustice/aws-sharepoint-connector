@@ -58,14 +58,14 @@ def run(
     -----------------------
 
     For a Sharepoint file located at:
-    https://justiceuk.sharepoint.com/sites/analytics-site/Shared%20Documents/reports/2026/daily_report.csv
+    https://justiceuk.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv
 
     ```
     data_movement_plan=[
         {
             "source": {
                 "site": "analytics-site",
-                "library": "Shared Documents",
+                "library": "Documents",
                 "directory": "reports/2026/",
                 "filename": "daily_report.csv"
             },
@@ -89,7 +89,7 @@ def run(
             },
             "destination": {
                 "site": "analytics-site",
-                "library": "Shared Documents",
+                "library": "Documents",
                 "directory": "reports/2026/",
                 "filename": "file1.csv"
             }
@@ -135,13 +135,13 @@ def run(
     secrets = SecretConfig()  # type: ignore[call-arg]
 
     all_movement_plans = [
-        movement_plan_class(**movement_plan)
-        for movement_plan in data_movement_plan  # type: ignore[arg-type]
+        movement_plan_class(**movement_plan)  # type: ignore[arg-type]
+        for movement_plan in data_movement_plan
     ]
-    final_data_movement_plan = DataMovementPlan(**all_movement_plans)  # type: ignore[arg-type]
+    final_data_movement_plan = DataMovementPlan(data_to_move=all_movement_plans)
 
     for plan in final_data_movement_plan.data_to_move:
-        engine = engine_class(config=secrets, plan=plan)
+        engine = engine_class(secrets=secrets, plan=plan)
 
         try:
             content = engine.download_file()

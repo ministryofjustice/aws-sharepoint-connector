@@ -9,11 +9,13 @@ from connector.config import SecretConfig
 def test_config_loading() -> None:
     """Test that the SecretConfig class correctly loads environment variables."""
     os.environ["SP_FOLDER_PATH"] = "fake/folder/path"
-    config = SecretConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
 
-    assert UUID("12345678-9012-3456-7890-123456789012") == config.SECRET_AZURE_TENANT_ID
-    assert config.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
-    assert config.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
+    assert (
+        UUID("12345678-9012-3456-7890-123456789012") == secrets.SECRET_AZURE_TENANT_ID
+    )
+    assert secrets.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
+    assert secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
     assert config.SP_SITE_NAME == "fake-site-name"
     assert config.SP_LIBRARY_NAME == "Documents"
     assert config.SP_FOLDER_PATH == "fake/folder/path/"

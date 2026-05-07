@@ -77,7 +77,7 @@ class UploadToSharePointEngine(Engine):
 
         """
         log.info("Uploading %s bytes to SharePoint...", len(content))
-        self.sharepoint_connector.create_upload_url()
+        self.sharepoint_connector.set_upload_url()
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
         )
@@ -100,7 +100,7 @@ class UploadToS3Engine(Engine):
         """
         try:
             log.info("Downloading file from SharePoint...")
-            self.sharepoint_connector.create_download_url()
+            self.sharepoint_connector.set_download_url()
             return self.sharepoint_connector.fetch_file()
         except UploadError:
             raise

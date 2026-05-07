@@ -57,7 +57,7 @@ All runtime configuration is environment-variable driven (or loaded from a local
 | `SECRET_AZURE_CLIENT_ID` | Yes | Azure app registration client ID | `11111111-1111-1111-1111-111111111111` |
 | `SECRET_AZURE_CLIENT_SECRET` | Yes | Azure app registration client secret | `super-secret` |
 | `SP_SITE_NAME` | Yes | SharePoint site path segment used by Graph site lookup | `analytics-site` |
-| `SP_LIBRARY_NAME` | Yes | Document library name in SharePoint | `Shared Documents` |
+| `SP_LIBRARY_NAME` | Yes | Document library name in SharePoint | `Documents` |
 | `SP_FOLDER_PATH` | Yes | Target/source SharePoint folder path (trailing `/` auto-normalized) | `exports/reports/` |
 | `SP_FILE_NAME` | Yes | Name of the file to be read from/written to Sharepoint | `daily_report.csv` |
 | `S3_BUCKET` | Yes | S3 bucket name | `my-transfer-bucket` |
@@ -68,10 +68,10 @@ All runtime configuration is environment-variable driven (or loaded from a local
 
 Given a full SharePoint file URL of:
 
-`https://justiceuk.sharepoint.com/sites/analytics-site/Shared%20Documents/exports/reports/2026/04/daily_report.csv`
+`https://justiceuk.sharepoint.com/sites/analytics-site/Documents/exports/reports/2026/04/daily_report.csv`
 
 - `SP_SITE_NAME=analytics-site`
-- `SP_LIBRARY_NAME=Shared Documents`
+- `SP_LIBRARY_NAME=Documents`
 - `SP_FOLDER_PATH=exports/reports/2026/04/`
 - `FILE_KEY=daily_report.csv`
 
@@ -83,7 +83,7 @@ SECRET_AZURE_CLIENT_ID=11111111-1111-1111-1111-111111111111
 SECRET_AZURE_CLIENT_SECRET=replace_me
 
 SP_SITE_NAME=analytics-site
-SP_LIBRARY_NAME=Shared Documents
+SP_LIBRARY_NAME=Documents
 SP_FOLDER_PATH=exports/reports/
 SP_FILE_NAME=daily_report.csv
 
@@ -204,7 +204,7 @@ dag:
   schedule: None
   env_vars:
     SP_SITE_NAME: analytics-site
-    SP_LIBRARY_NAME: Shared Documents
+    SP_LIBRARY_NAME: Documents
     SP_FOLDER_PATH: exports/reports/
     SP_FILE_NAME: daily_report.csv
     S3_BUCKET: my-transfer-bucket
