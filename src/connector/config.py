@@ -12,8 +12,36 @@ It uses Pydantic's `BaseSettings` to automatically load values from:
 from typing import Literal
 from uuid import UUID
 
-from pydantic import SecretStr, field_validator
+from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class S3File(BaseModel):
+    """BaseModel for defining an s3 file."""
+
+    source_s3_key: str
+    destination_sp_path: str
+
+
+class S3ToSPMovementPlan(BaseModel):
+    """BaseModel for defining a file movement plan from s3 to Sharepoint."""
+
+    bucket: str
+    files: list[S3File]
+
+
+class SharePointFile(BaseModel):
+    """BaseModel for defining a SharePoint file."""
+
+    source_sp_path: str
+    destination_s3_path: str
+
+
+class SPToS3MovementPlan(BaseModel):
+    """BaseModel for defining a file movement plan from Sharepoint to S3."""
+
+    sp_site: str
+    files: list[SharePointFile]
 
 
 class ConnectorConfig(BaseSettings):
