@@ -196,7 +196,7 @@ class SPToS3MovementPlan(BaseModel):
         return v
 
 
-class ConnectorConfig(BaseSettings):
+class SecretConfig(BaseSettings):
     """Application configuration container.
 
     Each field corresponds to a setting that can be provided either

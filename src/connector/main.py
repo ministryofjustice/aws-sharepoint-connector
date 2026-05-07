@@ -5,7 +5,7 @@ from typing import Literal, TypedDict
 
 from connector import utils
 from connector.config import (
-    ConnectorConfig,
+    SecretConfig,
     S3ToSPMovementPlan,
     SPToS3MovementPlan,
 )
@@ -122,7 +122,7 @@ def run(
 
     engine_class = ENGINE_MAP[run_mode]["engine"]
     movement_plan_class = ENGINE_MAP[run_mode]["plan"]
-    secrets = ConnectorConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
 
     for movement_plan in movement_plans:
         file_movement_plan = movement_plan_class(**movement_plan)  # type: ignore[arg-type]

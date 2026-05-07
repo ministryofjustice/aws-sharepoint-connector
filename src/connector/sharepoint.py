@@ -11,7 +11,7 @@ import requests
 from pydantic import BaseModel, Field
 
 from connector import auth
-from connector.config import ConnectorConfig
+from connector.config import SecretConfig
 from connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
@@ -31,7 +31,7 @@ log = logging.getLogger("s3-sharepoint")
 class SharePointConnector(BaseModel):
     """Connector for interacting with SharePoint via Microsoft Graph API."""
 
-    config: ConnectorConfig
+    config: SecretConfig
     headers: dict[str, str] = Field(default_factory=dict, init=False)
     drive_id: str = Field(default="", init=False)
     base_url: str = Field(default="", init=False)

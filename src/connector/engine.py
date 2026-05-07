@@ -7,7 +7,7 @@ from io import BytesIO
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from connector.config import ConnectorConfig, S3ToSPMovementPlan, SPToS3MovementPlan
+from connector.config import SecretConfig, S3ToSPMovementPlan, SPToS3MovementPlan
 from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
@@ -20,7 +20,7 @@ log = setup_logger()
 class Engine(ABC):
     """Abstract base class for different storage engines."""
 
-    config: ConnectorConfig
+    config: SecretConfig
     movement_plan: S3ToSPMovementPlan | SPToS3MovementPlan
     sharepoint_connector: SharePointConnector = field(init=False)
     s3_connector: S3Connector = field(init=False)

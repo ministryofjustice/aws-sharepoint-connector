@@ -8,7 +8,7 @@ import pytest
 from requests import Response
 
 from connector import engine
-from connector.config import ConnectorConfig
+from connector.config import SecretConfig
 from tests import test_utils as utils
 
 
@@ -51,7 +51,7 @@ def test_e2e_write_to_sharepoint(
     num_files: int, file_sizes: list[int], s3: boto3.client
 ) -> None:
     """Run upload flow with mocked requests.get/put and Session.get/put side effects."""
-    config = ConnectorConfig()  # type: ignore[call-arg]
+    config = SecretConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
 
     chunk_counts = [
@@ -127,7 +127,7 @@ def test_e2e_write_to_s3(
     num_files: int, file_sizes: list[int], s3: boto3.client
 ) -> None:
     """Run SharePoint to S3 flow with patched SharePoint GET responses."""
-    config = ConnectorConfig()  # type: ignore[call-arg]
+    config = SecretConfig()  # type: ignore[call-arg]
     utils.create_bucket(config.S3_BUCKET, s3)
 
     expected_payloads = [create_test_data(file_size_mb) for file_size_mb in file_sizes]
