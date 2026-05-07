@@ -1,5 +1,7 @@
 """Utility functions for the SharePoint connector."""
 
+import ast
+import json
 import logging
 import sys
 
@@ -35,3 +37,31 @@ def build_retry_session() -> requests.Session:
     )
     session.mount("https://", HTTPAdapter(max_retries=retry))
     return session
+
+
+def parse_movement_plans_from_env(
+    movement_plans: str,
+) -> list[dict[str, str | list[dict[str, str]]]]:
+    """Parse MOVEMENT_PLANS from an env var string into validated plan dicts.
+
+    Supports both strict JSON and Python-literal-like input.
+    """
+    try:
+        parsed_plans = json.loads(movement_plans)
+    except json.JSONDecodeError:
+        try:
+            parsed_plans = ast.literal_eval(movement_plans)
+        except (ValueError, SyntaxError) as exc:
+            err = f"Failed to parse MOVEMENT_PLANS as JSON or Python literal: {exc}"
+            raise ValueError(err) from exc
+
+    if isinstance(parsed_plans, dict):
+        return [parsed_plans]
+
+    if isinstance(parsed_plans, list) and all(
+        isinstance(item, dict) for item in parsed_plans
+    ):
+        return parsed_plans
+
+    err = "MOVEMENT_PLANS must decode to a dict or a list of dicts."
+    raise ValueError(err)
