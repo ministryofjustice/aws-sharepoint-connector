@@ -5,6 +5,7 @@ from typing import Literal, TypedDict
 
 from connector import utils
 from connector.config import (
+    DataMovementPlan,
     S3ToSPMovementPlan,
     SecretConfig,
     SPToS3MovementPlan,
@@ -133,10 +134,14 @@ def run(
     movement_plan_class = ENGINE_MAP[run_mode]["plan"]
     secrets = SecretConfig()  # type: ignore[call-arg]
 
-    for movement_plan in data_movement_plan:
-        file_movement_plan = movement_plan_class(**movement_plan)  # type: ignore[arg-type]
+    all_movement_plans = [
+        movement_plan_class(**movement_plan) for movement_plan in data_movement_plan  # type: ignore[arg-type]
+    ]
+    final_data_movement_plan = DataMovementPlan(**all_movement_plans)  # type: ignore[arg-type]
 
-        engine = engine_class(config=secrets, movement_plan=file_movement_plan)
+    for plan in final_data_movement_plan.data_to_move:
+
+        engine = engine_class(config=secrets, plan=plan)
 
         try:
             content = engine.download_file()
