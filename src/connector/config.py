@@ -132,6 +132,36 @@ class S3ToSPMovementPlan(BaseModel):
     source: S3File
     destination: SharePointFile
 
+    @property
+    def s3_bucket(self) -> str:
+        """Convenience property to access the source S3 bucket."""
+        return self.source.bucket
+
+    @property
+    def s3_file_key(self) -> str:
+        """Convenience property to access the S3 key of the file to move."""
+        return self.source.key
+
+    @property
+    def sp_library(self) -> str:
+        """Convenience property to access the destination SharePoint library."""
+        return self.destination.library
+
+    @property
+    def sp_site(self) -> str:
+        """Convenience property to access the destination SharePoint site."""
+        return self.destination.site
+
+    @property
+    def sp_directory(self) -> str:
+        """Convenience property to access the destination SharePoint directory."""
+        return self.destination.directory or ""
+
+    @property
+    def sp_file_name(self) -> str:
+        """Convenience property to access the destination SharePoint file name."""
+        return self.destination.filename
+
 
 class SPToS3MovementPlan(BaseModel):
     """BaseModel for defining a file movement plan from Sharepoint to S3.
@@ -145,6 +175,36 @@ class SPToS3MovementPlan(BaseModel):
 
     source: SharePointFile
     destination: S3File
+
+    @property
+    def s3_bucket(self) -> str:
+        """Convenience property to access the destination S3 bucket."""
+        return self.destination.bucket
+
+    @property
+    def s3_file_key(self) -> str:
+        """Convenience property to access the S3 key of the file to move."""
+        return self.destination.key
+
+    @property
+    def sp_library(self) -> str:
+        """Convenience property to access the source SharePoint library."""
+        return self.source.library
+
+    @property
+    def sp_site(self) -> str:
+        """Convenience property to access the source SharePoint site."""
+        return self.source.site
+
+    @property
+    def sp_directory(self) -> str:
+        """Convenience property to access the source SharePoint directory."""
+        return self.source.directory or ""
+
+    @property
+    def sp_file_name(self) -> str:
+        """Convenience property to access the source SharePoint file name."""
+        return self.source.filename
 
 
 class DataMovementPlan(BaseModel):
