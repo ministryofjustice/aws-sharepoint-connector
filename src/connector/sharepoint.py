@@ -15,7 +15,10 @@ from connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
+    MAX_CHUNK_RETRIES,
+    SERVER_ERROR_CODE,
     SHAREPOINT_DOMAIN,
+    TOO_MANY_REQUESTS_CODE,
 )
 from connector.exceptions import UploadError
 from connector.utils import build_retry_session, request_with_retry
@@ -121,7 +124,11 @@ class SharePointConnector(BaseModel):
 
         site_response.raise_for_status()
 
-        return site_response.json().get("id")  # type: ignore[no-any-return]
+        site_id: str | None = site_response.json().get("id")
+        if site_id is None:
+            err = f"Graph API returned no site ID for '{self.plan.sp_site}'"
+            raise UploadError(err)
+        return site_id
 
     def set_drive_id(self) -> None:
         """Fetch the drive ID for the specified SharePoint library.
@@ -255,44 +262,31 @@ class SharePointConnector(BaseModel):
             None
 
         """
+        expected_name = Path(self.file_path).name
+        verify_url = f"{self.base_url}?$select=name,size,file"
         try:
-            if self.plan.sp_directory.strip("/"):
-                children_url = (
-                    f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/"
-                    f"{quote(self.plan.sp_directory.strip('/'), safe='/')}"
-                    f":/children?$select=name,size,file"
-                )
-            else:
-                children_url = (
-                    f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root/children"
-                    f"?$select=name,size,file"
-                )
             resp = request_with_retry(
-                "GET", children_url, headers=self.headers, timeout=30
+                "GET", verify_url, headers=self.headers, timeout=30
             )
-            resp.raise_for_status()
-            items = resp.json().get("value", [])
-            expected_name = Path(self.file_path).name
-            matched_item = next(
-                (
-                    item
-                    for item in items
-                    if item.get("name") == expected_name and "file" in item
-                ),
-                None,
-            )
-            if matched_item is not None and matched_item.get("size") == expected_size:
-                log.info(
-                    "Verified uploaded file '%s' (%s bytes)",
-                    expected_name,
-                    expected_size,
+            if resp.status_code == DOES_NOT_EXIST_CODE:
+                err = (
+                    f"Verification failed: file '{expected_name}'"
+                    " not found in SharePoint."
                 )
-                return
-            err = (
-                f"Verification failed: file '{expected_name}' not found with size "
-                f"{expected_size} bytes."
+                raise UploadError(err)
+            resp.raise_for_status()
+            item = resp.json()
+            if "file" not in item or item.get("size") != expected_size:
+                err = (
+                    f"Verification failed: file '{expected_name}' not found with size "
+                    f"{expected_size} bytes."
+                )
+                raise UploadError(err)
+            log.info(
+                "Verified uploaded file '%s' (%s bytes)",
+                expected_name,
+                expected_size,
             )
-            raise UploadError(err)
         except requests.RequestException as exc:
             err = f"Failed to verify uploaded file: {exc}"
             raise UploadError(err) from exc
@@ -357,6 +351,7 @@ class SharePointConnector(BaseModel):
         file.seek(start)
 
         last_logged_pct = -10
+        chunk_retries = 0
         while start < file_size:
             remaining = file_size - start
             chunk_size = CHUNK_SIZE if CHUNK_SIZE > 0 else remaining
@@ -369,18 +364,49 @@ class SharePointConnector(BaseModel):
                     file_size=file_size,
                     session=session,
                 )
-                if r.status_code >= BAD_REQUEST_CODE:
-                    r.raise_for_status()
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as exc:
+                chunk_retries += 1
+                if chunk_retries > MAX_CHUNK_RETRIES:
+                    err = (
+                        f"Chunk upload failed after {MAX_CHUNK_RETRIES} retries: {exc}"
+                    )
+                    raise UploadError(err) from exc
                 log.warning("Chunk upload failed, attempting to resume...")
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
                     log.info("Resuming from %s after partial upload", f"{resume_at:,}")
-                    file.seek(resume_at)
                     start = resume_at
+                file.seek(start)
+                continue
+
+            # Permanent 4xx client errors (excluding 429) must not be retried
+            is_permanent_error = (
+                BAD_REQUEST_CODE <= r.status_code < SERVER_ERROR_CODE
+                and r.status_code != TOO_MANY_REQUESTS_CODE
+            )
+            if is_permanent_error:
+                err = f"Chunk upload failed with permanent HTTP {r.status_code} error"
+                raise UploadError(err)
+
+            # Transient server errors (429, 5xx): attempt resume
+            if r.status_code >= BAD_REQUEST_CODE:
+                chunk_retries += 1
+                if chunk_retries > MAX_CHUNK_RETRIES:
+                    err = (
+                        f"Chunk upload failed with HTTP {r.status_code}"
+                        f" after {MAX_CHUNK_RETRIES} retries"
+                    )
+                    raise UploadError(err)
+                log.warning("Chunk upload failed, attempting to resume...")
+                resume_at = self.get_next_start(session=session)
+                if resume_at != start:
+                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    start = resume_at
+                file.seek(start)
                 continue
 
             start += len(chunk)
+            chunk_retries = 0
             pct = int((start / file_size) * 100)
             if pct // 10 > last_logged_pct // 10:
                 log.info(

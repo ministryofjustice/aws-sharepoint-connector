@@ -37,7 +37,7 @@ package = true
 where = ["src", "."]
 
 [project.scripts]
-connector = "connector.main:main"
+connector = "connector.main:run"
 
 [tool.mypy]
 strict = true

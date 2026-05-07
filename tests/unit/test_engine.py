@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import boto3
 import pytest
-from botocore.exceptions import BotoCoreError, ClientError
 
 from connector import engine
 from connector.config import SecretConfig
@@ -37,29 +36,16 @@ def test_upload_sharepoint_download_file_success(s3: boto3.client) -> None:
 @pytest.mark.parametrize(
     "exception",
     [
-        BotoCoreError(),
-        ClientError(
-            error_response={
-                "Error": {"Code": "MockError", "Message": "Mock error message"}
-            },
-            operation_name="MockOperation",
-        ),
+        UploadError("s3 download failed"),
     ],
 )
 def test_upload_sharepoint_download_file_error(
     exception: Exception, s3: boto3.client
 ) -> None:
-    """Test that the method to download from s3 raises an UploadError."""
+    """Test that download_file propagates UploadError from S3Connector."""
     secrets = SecretConfig()  # type: ignore[call-arg]
     _, plan = utils.create_s3_to_sp_movement_plan()
     utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-    df = utils.create_test_csv()
-
-    s3.put_object(
-        Bucket=plan.data_to_move[0].s3_bucket,
-        Key=plan.data_to_move[0].s3_file_key,
-        Body=df.to_csv(index=False).encode("utf-8"),
-    )
 
     with (
         patch(

@@ -32,6 +32,31 @@ def test_download_from_s3_returns_file_content(s3: boto3.client) -> None:
     assert connector.download_from_s3() == expected
 
 
+@pytest.mark.parametrize(
+    "exception",
+    [
+        BotoCoreError(),
+        ClientError({"Error": {"Message": "S3 client error"}}, "GetObject"),
+    ],
+)
+def test_download_from_s3_error(s3: boto3.client, exception: Exception) -> None:
+    """download_from_s3 raises UploadError with context when S3 client raises."""
+    _, plan = utils.create_sp_to_s3_movement_plan()
+    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
+
+    connector = S3Connector(
+        client=s3,
+        bucket=plan.data_to_move[0].s3_bucket,
+        key=plan.data_to_move[0].s3_file_key,
+    )
+
+    with (
+        patch.object(s3, "get_object", side_effect=exception),
+        pytest.raises(UploadError, match="Failed to download s3://"),
+    ):
+        connector.download_from_s3()
+
+
 def test_upload_to_s3_writes_file_content(s3: boto3.client) -> None:
     """Upload writes bytes that can be read back from S3 unchanged."""
     _, plan = utils.create_sp_to_s3_movement_plan()

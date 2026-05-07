@@ -140,15 +140,18 @@ def run(
     ]
     final_data_movement_plan = DataMovementPlan(data_to_move=all_movement_plans)
 
-    for plan in final_data_movement_plan.data_to_move:
+    plans = final_data_movement_plan.data_to_move
+    total = len(plans)
+    for i, plan in enumerate(plans, start=1):
+        log.info("Processing file %s/%s: %s", i, total, plan.s3_file_key)
         engine = engine_class(secrets=secrets, plan=plan)
 
         try:
             content = engine.download_file()
             engine.upload_file(content)
-            log.info("File transfer completed successfully.")
+            log.info("Completed file %s/%s: %s", i, total, plan.s3_file_key)
         except UploadError:
-            log.exception("File transfer failed")
+            log.exception("Failed file %s/%s: %s", i, total, plan.s3_file_key)
             raise
 
 

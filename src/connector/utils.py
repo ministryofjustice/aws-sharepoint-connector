@@ -120,5 +120,5 @@ def request_with_retry(
             time.sleep(0.5 * attempt)
 
     # Unreachable: loop always returns or raises
-    msg = f"Failed to execute {method} request to {url}"
+    msg = f"Failed to execute {method} request to {url}"  # pragma: no cover
     raise RuntimeError(msg)  # pragma: no cover

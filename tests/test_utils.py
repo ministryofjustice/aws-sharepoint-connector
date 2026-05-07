@@ -158,12 +158,7 @@ def mock_verify_uploaded_file_response(
 ) -> Response:
     """Mock response for the verify_uploaded_file function."""
     return build_response(
-        json_body={
-            "value": [
-                {"name": file_name, "size": size, "file": {}},
-                {"name": "other-file", "size": 1, "file": {}},
-            ]
-        },
+        json_body={"name": file_name, "size": size, "file": {}},
         status_code=status_code,
     )
 

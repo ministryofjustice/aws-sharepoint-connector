@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from io import BytesIO
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 
 from connector.config import S3ToSPMovementPlan, SecretConfig, SPToS3MovementPlan
 from connector.exceptions import UploadError
@@ -61,12 +60,8 @@ class UploadToSharePointEngine(Engine):
             bytes: The content of the S3 object as bytes.
 
         """
-        try:
-            log.info("Downloading file from S3...")
-            return self.s3_connector.download_from_s3()
-        except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to download {self.plan.s3_file_key} from S3: {exc}"
-            raise UploadError(err) from exc
+        log.info("Downloading file from S3...")
+        return self.s3_connector.download_from_s3()
 
     def upload_file(self, content: bytes) -> None:
         """Upload a file to SharePoint.
