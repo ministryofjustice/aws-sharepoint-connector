@@ -1,5 +1,5 @@
 """Init file."""
 
-from connector.main import main
+from connector.main import main, run
 
-__all__ = ["main"]
+__all__ = ["run", "main"]

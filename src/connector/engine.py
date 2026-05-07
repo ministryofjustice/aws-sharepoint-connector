@@ -7,7 +7,7 @@ from io import BytesIO
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from connector.config import ConnectorConfig
+from connector.config import ConnectorConfig, S3ToSPMovementPlan, SPToS3MovementPlan
 from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
@@ -21,6 +21,7 @@ class Engine(ABC):
     """Abstract base class for different storage engines."""
 
     config: ConnectorConfig
+    movement_plan: S3ToSPMovementPlan | SPToS3MovementPlan
     sharepoint_connector: SharePointConnector = field(init=False)
     s3_connector: S3Connector = field(init=False)
 
@@ -45,6 +46,8 @@ class Engine(ABC):
 
 class UploadToSharePointEngine(Engine):
     """Engine for uploading files to SharePoint."""
+
+    movement_plan: S3ToSPMovementPlan
 
     def download_file(self) -> bytes:
         """Download a file from S3 and return its content as bytes.
@@ -82,6 +85,8 @@ class UploadToSharePointEngine(Engine):
 
 class UploadToS3Engine(Engine):
     """Engine for uploading files to S3."""
+
+    movement_plan: SPToS3MovementPlan
 
     def download_file(self) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
