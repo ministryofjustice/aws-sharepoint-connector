@@ -219,6 +219,28 @@ class DataMovementPlan(BaseModel):
 
     data_to_move: list[S3ToSPMovementPlan | SPToS3MovementPlan]
 
+    @field_validator("data_to_move")
+    @classmethod
+    def validate_data_to_move_not_empty(
+        cls, v: list[S3ToSPMovementPlan | SPToS3MovementPlan]
+    ) -> list[S3ToSPMovementPlan | SPToS3MovementPlan]:
+        """Validate that data_to_move is not empty.
+
+        Args:
+            v: The list of movement plans.
+
+        Returns:
+            The validated list.
+
+        Raises:
+            ValueError: If the list is empty.
+
+        """
+        if not v:
+            err = "data_to_move must contain at least one movement plan."
+            raise ValueError(err)
+        return v
+
 
 class SecretConfig(BaseSettings):
     """Application configuration container.
