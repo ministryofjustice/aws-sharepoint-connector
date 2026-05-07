@@ -36,7 +36,9 @@ class Engine(ABC):
     def __post_init__(self) -> None:
         """Post-initialization to create SharePointConnector and S3Connector."""
         log.info("Setting up storage connectors...")
-        self.sharepoint_connector = SharePointConnector(secrets=self.secrets)
+        self.sharepoint_connector = SharePointConnector(
+            secrets=self.secrets, plan=self.plan
+        )
         self.s3_connector = S3Connector(
             client=boto3.client("s3"),
             bucket=self.plan.s3_bucket,
