@@ -135,12 +135,12 @@ def run(
     secrets = SecretConfig()  # type: ignore[call-arg]
 
     all_movement_plans = [
-        movement_plan_class(**movement_plan) for movement_plan in data_movement_plan  # type: ignore[arg-type]
+        movement_plan_class(**movement_plan)
+        for movement_plan in data_movement_plan  # type: ignore[arg-type]
     ]
     final_data_movement_plan = DataMovementPlan(**all_movement_plans)  # type: ignore[arg-type]
 
     for plan in final_data_movement_plan.data_to_move:
-
         engine = engine_class(config=secrets, plan=plan)
 
         try:

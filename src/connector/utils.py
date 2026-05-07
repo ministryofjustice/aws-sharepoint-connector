@@ -4,10 +4,20 @@ import ast
 import json
 import logging
 import sys
+import time
+from typing import TYPE_CHECKING, Any, Literal
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from connector.constants import RETRYABLE_ERROR_CODES
+from connector.exceptions import UploadError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+log = logging.getLogger("s3-sharepoint")
 
 
 def setup_logger() -> logging.Logger:
@@ -39,20 +49,20 @@ def build_retry_session() -> requests.Session:
     return session
 
 
-def parse_movement_plans_from_env(
-    movement_plans: str,
-) -> list[dict[str, str | list[dict[str, str]]]]:
-    """Parse MOVEMENT_PLANS from an env var string into validated plan dicts.
+def parse_data_movement_plan_from_env(
+    data_movement_plan: str,
+) -> list[dict[str, dict[str, str]]]:
+    """Parse DATA_MOVEMENT_PLAN from an env var string into validated plan dicts.
 
     Supports both strict JSON and Python-literal-like input.
     """
     try:
-        parsed_plans = json.loads(movement_plans)
+        parsed_plans = json.loads(data_movement_plan)
     except json.JSONDecodeError:
         try:
-            parsed_plans = ast.literal_eval(movement_plans)
+            parsed_plans = ast.literal_eval(data_movement_plan)
         except (ValueError, SyntaxError) as exc:
-            err = f"Failed to parse MOVEMENT_PLANS as JSON or Python literal: {exc}"
+            err = f"Failed to parse DATA_MOVEMENT_PLAN as JSON or Python literal: {exc}"
             raise ValueError(err) from exc
 
     if isinstance(parsed_plans, dict):
@@ -63,5 +73,52 @@ def parse_movement_plans_from_env(
     ):
         return parsed_plans
 
-    err = "MOVEMENT_PLANS must decode to a dict or a list of dicts."
+    err = "DATA_MOVEMENT_PLAN must decode to a dict or a list of dicts."
     raise ValueError(err)
+
+
+def request_with_retry(
+    method: Literal["GET", "POST"],
+    url: str,
+    *,
+    max_attempts: int = 3,
+    **kwargs: Any,  # noqa: ANN401
+) -> requests.Response:
+    """Issue a GET/POST request with bounded retries for transient failures."""
+    if method == "GET":
+        request_fn: Callable[..., requests.Response] = requests.get
+    elif method == "POST":
+        request_fn = requests.post
+    else:
+        err = f"Unsupported HTTP method: {method}"
+        raise ValueError(err)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = request_fn(url, **kwargs)
+            if response.status_code in RETRYABLE_ERROR_CODES and attempt < max_attempts:
+                log.warning(
+                    "%s %s returned %s (attempt %s/%s), retrying...",
+                    method,
+                    url,
+                    response.status_code,
+                    attempt,
+                    max_attempts,
+                )
+                time.sleep(0.5 * attempt)
+            else:
+                return response
+        except requests.RequestException:
+            if attempt == max_attempts:
+                raise
+            log.warning(
+                "%s %s failed (attempt %s/%s), retrying...",
+                method,
+                url,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5 * attempt)
+
+    err = f"Failed to execute {method} request to {url}"
+    raise UploadError(err)
