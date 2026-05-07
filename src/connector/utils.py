@@ -120,5 +120,5 @@ def request_with_retry(
             )
             time.sleep(0.5 * attempt)
 
-    err = f"Failed to execute {method} request to {url}"
-    raise UploadError(err)
+    err = f"Failed to execute {method} request to {url}"  # pragma: no cover
+    raise UploadError(err)  # pragma: no cover

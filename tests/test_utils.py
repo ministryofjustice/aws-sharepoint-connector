@@ -14,9 +14,9 @@ from requests import Response
 from connector.config import DataMovementPlan, S3ToSPMovementPlan, SPToS3MovementPlan
 
 
-def create_s3_to_sp_movement_plan() -> (
-    tuple[list[dict[str, dict[str, str]]], DataMovementPlan]
-):
+def create_s3_to_sp_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
     """Return a sample S3 to SharePoint movement plan."""
     plans = [
         {
@@ -96,9 +96,9 @@ def create_s3_to_sp_movement_plan() -> (
     return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
 
 
-def create_sp_to_s3_movement_plan() -> (
-    tuple[list[dict[str, dict[str, str]]], DataMovementPlan]
-):
+def create_sp_to_s3_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
     """Return a sample SharePoint to S3 movement plan."""
     plans = [
         {
@@ -306,6 +306,7 @@ def sharepoint_connector_patches(
         extra_post_side_effects: Additional POST responses beyond the defaults.
         extra_get_side_effects: Additional GET responses (e.g., verify responses) beyond setup.
         num_files: Number of files being processed. Multiplies setup responses for each.
+
     """
     post_side_effects: list[Response] = []
     if extra_post_side_effects:

@@ -2,7 +2,11 @@
 
 import boto3
 import pytest
+from unittest.mock import patch
 
+from botocore.exceptions import BotoCoreError, ClientError
+
+from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from tests import test_utils as utils
 
@@ -46,6 +50,32 @@ def test_upload_to_s3_writes_file_content(s3: boto3.client) -> None:
         Bucket=plan.data_to_move[0].s3_bucket, Key=plan.data_to_move[0].s3_file_key
     )["Body"].read()
     assert uploaded == data
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        (BotoCoreError()),
+        (ClientError({"Error": {"Message": "S3 client error"}}, "PutObject")),
+    ],
+)
+def test_upload_to_s3_error(s3: boto3.client, exception: Exception) -> None:
+    """upload_to_s3 raises UploadError if S3 client raises an error."""
+    _, plan = utils.create_sp_to_s3_movement_plan()  # type: ignore[assignment]
+
+    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
+
+    connector = S3Connector(
+        client=s3,
+        bucket=plan.data_to_move[0].s3_bucket,
+        key=plan.data_to_move[0].s3_file_key,
+    )
+
+    with (
+        patch.object(s3, "put_object", side_effect=exception),
+        pytest.raises(UploadError, match="Failed to upload object to s3://"),
+    ):
+        connector.upload_to_s3(b"data")
 
 
 def test_verify_uploaded_object_success(s3: boto3.client) -> None:

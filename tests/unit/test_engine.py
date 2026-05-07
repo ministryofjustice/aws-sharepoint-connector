@@ -130,7 +130,14 @@ def test_upload_s3_download_file_success() -> None:
     assert data == b'{"content": "fake-file-content"}'
 
 
-def test_upload_s3_download_file_error() -> None:
+@pytest.mark.parametrize(
+    "exception",
+    [
+        UploadError("Mock upload error"),
+        Exception("Mock error"),
+    ],
+)
+def test_upload_s3_download_file_error(exception: Exception) -> None:
     """Test that the method to download from sharepoint raises an error."""
     secrets = SecretConfig()  # type: ignore[call-arg]
     _, plan = utils.create_s3_to_sp_movement_plan()
@@ -138,7 +145,7 @@ def test_upload_s3_download_file_error() -> None:
         utils.sharepoint_connector_patches(),
         patch(
             "connector.engine.SharePointConnector.fetch_file",
-            side_effect=Exception("Mock error"),
+            side_effect=exception,
         ),
     ):
         eng = engine.UploadToS3Engine(secrets=secrets, plan=plan.data_to_move[0])
