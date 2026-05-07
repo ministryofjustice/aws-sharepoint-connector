@@ -14,9 +14,9 @@ from requests import Response
 from connector.config import DataMovementPlan, S3ToSPMovementPlan, SPToS3MovementPlan
 
 
-def create_s3_to_sp_movement_plan() -> tuple[
-    list[dict[str, dict[str, str]]], DataMovementPlan
-]:
+def create_s3_to_sp_movement_plan() -> (
+    tuple[list[dict[str, dict[str, str]]], DataMovementPlan]
+):
     """Return a sample S3 to SharePoint movement plan."""
     plans = [
         {
@@ -79,15 +79,26 @@ def create_s3_to_sp_movement_plan() -> tuple[
                 "filename": "file5.csv",
             },
         },
+        {
+            "source": {
+                "bucket": "my-source-bucket-2",
+                "key": "path/to/file6.csv",
+            },
+            "destination": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "filename": "file6.csv",
+            },
+        },
     ]
 
     all_plans = [S3ToSPMovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
     return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
 
 
-def create_sp_to_s3_movement_plan() -> tuple[
-    list[dict[str, dict[str, str]]], DataMovementPlan
-]:
+def create_sp_to_s3_movement_plan() -> (
+    tuple[list[dict[str, dict[str, str]]], DataMovementPlan]
+):
     """Return a sample SharePoint to S3 movement plan."""
     plans = [
         {
@@ -148,6 +159,17 @@ def create_sp_to_s3_movement_plan() -> tuple[
             "destination": {
                 "bucket": "my-destination-bucket-2",
                 "key": "path/to/file5.csv",
+            },
+        },
+        {
+            "source": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "filename": "file6.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket-2",
+                "key": "path/to/file6.csv",
             },
         },
     ]
@@ -262,21 +284,43 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
     return build_response(json_body={"nextExpectedRanges": [f"{start}-{end}"]})
 
 
+def _make_drive_id_response() -> Callable[[], Response]:
+    """Factory for creating drive_id response callables."""
+    return lambda: mock_drive_id_response("complete")
+
+
+def _make_ensure_folder_response() -> Callable[[], Response]:
+    """Factory for creating ensure_folder response callables."""
+    return lambda: mock_ensure_destination_folder_response("folder")
+
+
 @contextmanager
 def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,
     extra_get_side_effects: list[Response] | None = None,
+    num_files: int = 1,
 ) -> Generator[tuple[Mock, Mock, Mock], Any, Any]:
-    """Mock the underlying methods of SharePointConnector to avoid real API calls."""
-    post_side_effects: list[Callable[[], Response] | Response] = []
+    """Mock the underlying methods of SharePointConnector to avoid real API calls.
+
+    Args:
+        extra_post_side_effects: Additional POST responses beyond the defaults.
+        extra_get_side_effects: Additional GET responses (e.g., verify responses) beyond setup.
+        num_files: Number of files being processed. Multiplies setup responses for each.
+    """
+    post_side_effects: list[Response] = []
     if extra_post_side_effects:
         post_side_effects.extend(extra_post_side_effects)
 
-    get_side_effects: list[Callable[[], Response] | Response] = [
-        mock_site_id_response(),
-        mock_drive_id_response("complete"),
-        mock_ensure_destination_folder_response("folder"),
-    ]
+    # Build get_side_effects with setup responses (one set per file) + extra responses
+    get_side_effects: list[Response] = []
+
+    # Add setup response objects (one cycle per file)
+    for _ in range(num_files):
+        get_side_effects.append(mock_site_id_response())
+        get_side_effects.append(mock_drive_id_response("complete"))
+        get_side_effects.append(mock_ensure_destination_folder_response("folder"))
+
+    # Add extra responses (verify, download, etc.)
     if extra_get_side_effects:
         get_side_effects.extend(extra_get_side_effects)
 
