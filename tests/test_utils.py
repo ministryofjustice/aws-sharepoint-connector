@@ -11,6 +11,150 @@ import pandas as pd
 from azure.core.credentials import AccessToken
 from requests import Response
 
+from connector.config import DataMovementPlan, S3ToSPMovementPlan, SPToS3MovementPlan
+
+
+def create_s3_to_sp_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
+    """Return a sample S3 to SharePoint movement plan."""
+    plans = [
+        {
+            "source": {
+                "bucket": "my-source-bucket",
+                "key": "path/to/file1.csv",
+            },
+            "destination": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file1.csv",
+            },
+        },
+        {
+            "source": {
+                "bucket": "my-source-bucket",
+                "key": "path/to/file2.csv",
+            },
+            "destination": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file2.csv",
+            },
+        },
+        {
+            "source": {
+                "bucket": "my-source-bucket",
+                "key": "path/to/file3.csv",
+            },
+            "destination": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file3.csv",
+            },
+        },
+        {
+            "source": {
+                "bucket": "my-source-bucket-2",
+                "key": "path/to/file4.csv",
+            },
+            "destination": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file4.csv",
+            },
+        },
+        {
+            "source": {
+                "bucket": "my-source-bucket-2",
+                "key": "path/to/file5.csv",
+            },
+            "destination": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file5.csv",
+            },
+        },
+    ]
+
+    all_plans = [S3ToSPMovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
+    return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
+
+
+def create_sp_to_s3_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
+    """Return a sample SharePoint to S3 movement plan."""
+    plans = [
+        {
+            "source": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file1.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket",
+                "key": "path/to/file1.csv",
+            },
+        },
+        {
+            "source": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file2.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket",
+                "key": "path/to/file2.csv",
+            },
+        },
+        {
+            "source": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file3.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket",
+                "key": "path/to/file3.csv",
+            },
+        },
+        {
+            "source": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file4.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket-2",
+                "key": "path/to/file4.csv",
+            },
+        },
+        {
+            "source": {
+                "site": "analytics-site-2",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file5.csv",
+            },
+            "destination": {
+                "bucket": "my-destination-bucket-2",
+                "key": "path/to/file5.csv",
+            },
+        },
+    ]
+
+    all_plans = [SPToS3MovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
+    return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
+
 
 def create_bucket(bucket_name: str, s3: boto3.client) -> None:
     """Create a mocked s3 bucket."""

@@ -1,5 +1,6 @@
 """Pytest fixtures for testing the AWS SharePoint Connector."""
 
+import os
 from collections.abc import Generator
 
 import boto3
@@ -14,7 +15,7 @@ def mock_s3() -> Generator[boto3.client]:
         yield boto3.client("s3", region_name="eu-west-2")
 
 
-@pytest.fixture
+@pytest.fixture(name="monkeypatch_session")
 def monkeypatch_session() -> Generator[pytest.MonkeyPatch]:
     """Create MonkeyPatch for setting environment variables."""
     m = pytest.MonkeyPatch()
@@ -29,14 +30,13 @@ def set_env_vars(monkeypatch_session: pytest.MonkeyPatch) -> None:
         "SECRET_AZURE_TENANT_ID": "12345678901234567890123456789012",
         "SECRET_AZURE_CLIENT_ID": "fake-client-id",
         "SECRET_AZURE_CLIENT_SECRET": "fake-client-secret",  # pragma: allowlist secret
-        "SP_SITE_NAME": "fake-site-name",
-        "SP_LIBRARY_NAME": "Documents",
-        "SP_FOLDER_PATH": "fake/folder/path",
-        "SP_FILE_NAME": "fake-file.csv",
-        "S3_BUCKET": "fake-bucket",
-        "FILE_KEY": "fake-file.csv",
-        "MODE": "write_to_s3",
     }
 
     for key, value in test_env_vars.items():
         monkeypatch_session.setenv(key, value)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Remove environment variables after all tests have run."""
+    if "DATA_MOVEMENT_PLAN" in os.environ:
+        del os.environ["DATA_MOVEMENT_PLAN"]
