@@ -3,6 +3,8 @@
 import os
 from typing import Literal, TypedDict
 
+from dotenv import load_dotenv
+
 from connector import utils
 from connector.config import (
     DataMovementPlan,
@@ -98,6 +100,7 @@ def run(
     ```
 
     """
+    load_dotenv()
     log.info("Starting file transfer process...")
 
     run_mode = mode or os.getenv("MODE")

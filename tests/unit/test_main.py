@@ -181,6 +181,7 @@ class TestRunErrorPaths:
     def test_no_mode_raises_value_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that omitting mode with no MODE env var raises ValueError."""
         monkeypatch.delenv("MODE", raising=False)
+        monkeypatch.setattr("connector.main.load_dotenv", lambda: None)
         plans_dicts, _ = create_sp_to_s3_movement_plan()
 
         with pytest.raises(ValueError, match="Invalid mode"):
