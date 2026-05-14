@@ -1,11 +1,15 @@
 # AWS - SharePoint Connector
 
+[![GitHub release](https://img.shields.io/github/v/release/ministryofjustice/aws-sharepoint-connector)](https://github.com/ministryofjustice/aws-sharepoint-connector/releases)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-blue)](CHANGELOG.md)
+
 [![Python Unit Test](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-unit-test.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-unit-test.yml)
 [![Python Linting](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-lint.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-lint.yml)
 [![Python Type Check](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml)
 [![Release Container](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)](pyproject.toml)
+
 
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
@@ -24,6 +28,7 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 - [How to modify or extend](#how-to-modify-or-extend)
 - [Troubleshooting](#troubleshooting)
 - [Security considerations](#security-considerations)
+- [Changelog](CHANGELOG.md)
 - [License](#license)
 
 ## Architecture and flow
