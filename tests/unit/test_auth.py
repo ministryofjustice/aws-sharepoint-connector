@@ -6,32 +6,32 @@ from unittest.mock import patch
 import pytest
 
 from connector import auth
-from connector.config import AppConfig
+from connector.config import SecretConfig
 from connector.exceptions import NoLibraryError
 from tests import test_utils as utils
 
 
 def test_get_azure_token() -> None:
     """Test that get_azure_token returns a token."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
 
     with patch(
         "azure.identity.ClientSecretCredential.get_token",
         side_effect=utils.mock_get_token,
     ):
         token = auth.get_azure_token(
-            str(config.SECRET_AZURE_TENANT_ID),
-            config.SECRET_AZURE_CLIENT_ID.get_secret_value(),
-            config.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
+            str(secrets.SECRET_AZURE_TENANT_ID),
+            secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
+            secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
     assert token == "fake-token"  # noqa: S105  # nosec: B105 # nosec: B106
 
 
 def test_get_drive_id_success() -> None:
     """Test that get_drive_id returns the correct drive ID."""
-    config = AppConfig()  # type: ignore[call-arg]
-    site_id = config.SP_SITE_NAME
-    library_name = config.SP_LIBRARY_NAME
+    _, plan = utils.create_s3_to_sp_movement_plan()
+    site_id = plan.data_to_move[0].sp_site
+    library_name = plan.data_to_move[0].sp_library
     headers = {"Authorization": "Bearer fake-token"}
 
     with patch(
@@ -55,9 +55,9 @@ def test_get_drive_id_success() -> None:
 )
 def test_get_drive_id_empty(content: Literal["no_drives", "no_value"]) -> None:
     """Test that get_drive_id raises a ValueError when the response is empty."""
-    config = AppConfig()  # type: ignore[call-arg]
-    site_id = config.SP_SITE_NAME
-    library_name = config.SP_LIBRARY_NAME
+    _, plan = utils.create_s3_to_sp_movement_plan()
+    site_id = plan.data_to_move[0].sp_site
+    library_name = plan.data_to_move[0].sp_library
     headers = {"Authorization": "Bearer fake-token"}
 
     with (

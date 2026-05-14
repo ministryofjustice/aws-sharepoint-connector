@@ -25,8 +25,12 @@ class S3Connector:
             bytes: The content of the S3 object as bytes.
 
         """
-        obj = self.client.get_object(Bucket=self.bucket, Key=self.key)
-        return obj["Body"].read()  # type: ignore[no-any-return]
+        try:
+            obj = self.client.get_object(Bucket=self.bucket, Key=self.key)
+            return obj["Body"].read()  # type: ignore[no-any-return]
+        except (BotoCoreError, ClientError) as exc:
+            err = f"Failed to download s3://{self.bucket}/{self.key}: {exc}"
+            raise UploadError(err) from exc
 
     def upload_to_s3(self, data: bytes) -> None:
         """Upload data to an S3 bucket.

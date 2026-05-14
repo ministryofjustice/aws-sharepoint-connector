@@ -5,9 +5,8 @@ from dataclasses import dataclass, field
 from io import BytesIO
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 
-from connector.config import AppConfig
+from connector.config import S3ToSPMovementPlan, SecretConfig, SPToS3MovementPlan
 from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
@@ -20,7 +19,8 @@ log = setup_logger()
 class Engine(ABC):
     """Abstract base class for different storage engines."""
 
-    config: AppConfig
+    secrets: SecretConfig
+    plan: S3ToSPMovementPlan | SPToS3MovementPlan
     sharepoint_connector: SharePointConnector = field(init=False)
     s3_connector: S3Connector = field(init=False)
 
@@ -35,16 +35,20 @@ class Engine(ABC):
     def __post_init__(self) -> None:
         """Post-initialization to create SharePointConnector and S3Connector."""
         log.info("Setting up storage connectors...")
-        self.sharepoint_connector = SharePointConnector(config=self.config)
+        self.sharepoint_connector = SharePointConnector(
+            secrets=self.secrets, plan=self.plan
+        )
         self.s3_connector = S3Connector(
             client=boto3.client("s3"),
-            bucket=self.config.S3_BUCKET,
-            key=self.config.FILE_KEY,
+            bucket=self.plan.s3_bucket,
+            key=self.plan.s3_file_key,
         )
 
 
 class UploadToSharePointEngine(Engine):
     """Engine for uploading files to SharePoint."""
+
+    plan: S3ToSPMovementPlan
 
     def download_file(self) -> bytes:
         """Download a file from S3 and return its content as bytes.
@@ -56,12 +60,8 @@ class UploadToSharePointEngine(Engine):
             bytes: The content of the S3 object as bytes.
 
         """
-        try:
-            log.info("Downloading file from S3...")
-            return self.s3_connector.download_from_s3()
-        except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to download {self.config.FILE_KEY} from S3: {exc}"
-            raise UploadError(err) from exc
+        log.info("Downloading file from S3...")
+        return self.s3_connector.download_from_s3()
 
     def upload_file(self, content: bytes) -> None:
         """Upload a file to SharePoint.
@@ -74,7 +74,7 @@ class UploadToSharePointEngine(Engine):
 
         """
         log.info("Uploading %s bytes to SharePoint...", len(content))
-        self.sharepoint_connector.create_upload_url()
+        self.sharepoint_connector.set_upload_url()
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
         )
@@ -82,6 +82,8 @@ class UploadToSharePointEngine(Engine):
 
 class UploadToS3Engine(Engine):
     """Engine for uploading files to S3."""
+
+    plan: SPToS3MovementPlan
 
     def download_file(self) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
@@ -95,7 +97,7 @@ class UploadToS3Engine(Engine):
         """
         try:
             log.info("Downloading file from SharePoint...")
-            self.sharepoint_connector.create_download_url()
+            self.sharepoint_connector.set_download_url()
             return self.sharepoint_connector.fetch_file()
         except UploadError:
             raise
@@ -116,8 +118,8 @@ class UploadToS3Engine(Engine):
         log.info(
             "Uploading %s bytes to S3 bucket '%s' with key '%s'...",
             len(content),
-            self.config.S3_BUCKET,
-            self.config.FILE_KEY,
+            self.plan.s3_bucket,
+            self.plan.s3_file_key,
         )
         self.s3_connector.upload_to_s3(content)
         self.s3_connector.verify_uploaded_object(expected_size=len(content))

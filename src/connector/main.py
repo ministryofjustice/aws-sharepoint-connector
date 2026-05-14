@@ -1,77 +1,162 @@
 """Main entry point for the SharePoint connector application."""
 
 import os
+from typing import Literal, TypedDict
 
-from connector.config import AppConfig
+from dotenv import load_dotenv
+
+from connector import utils
+from connector.config import (
+    DataMovementPlan,
+    S3ToSPMovementPlan,
+    SecretConfig,
+    SPToS3MovementPlan,
+)
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
 from connector.exceptions import UploadError
-from connector.utils import setup_logger
 
-log = setup_logger()
+log = utils.setup_logger()
 
-ENGINE_MAP: dict[str, type[UploadToSharePointEngine | UploadToS3Engine]] = {
-    "write_to_s3": UploadToS3Engine,
-    "write_to_sharepoint": UploadToSharePointEngine,
+
+class EngineMapDict(TypedDict):
+    """TypedDict for mapping connector modes to movement plans and engines."""
+
+    plan: type[S3ToSPMovementPlan | SPToS3MovementPlan]
+    engine: type[UploadToSharePointEngine | UploadToS3Engine]
+
+
+ENGINE_MAP: dict[str, EngineMapDict] = {
+    "write_to_s3": {
+        "plan": SPToS3MovementPlan,
+        "engine": UploadToS3Engine,
+    },
+    "write_to_sharepoint": {
+        "plan": S3ToSPMovementPlan,
+        "engine": UploadToSharePointEngine,
+    },
 }
 
 
-def setup_environment_variables(non_secret_env_vars: dict[str, str]) -> None:
-    """Set up environment variables from a dictionary.
-
-    Args:
-        non_secret_env_vars (dict[str, str]): Environment variable names and values
-        passed by calling code
-
-    Returns:
-        None
-
-    """
-    for var_name, var_value in non_secret_env_vars.items():
-        if var_value is not None:
-            os.environ[var_name] = var_value
-
-
-def main(
-    non_secret_env_vars: dict[str, str] | None = None,
+def run(
+    mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
+    data_movement_plan: list[dict[str, dict[str, str]]] | None = None,
 ) -> None:
     """Entry point for the connector application.
 
     Args:
-        non_secret_env_vars (dict[str, str] | None): Environment variable names and
-        values passed by calling code. No secret values should be passed here.
+        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): Optional
+            argument to specify whether to copy a file from s3 to Sharepoint or
+            vice versa. If not provided, the mode will be read from environment
+            variables or a .env file.
+        data_movement_plan (list[dict[str, dict[str, str]]] | None): Optional
+            argument to specify the files to be moved and their destinations.
+            If not provided, the movement plan will be read from environment variables
+            or a .env file.
 
     Returns:
         None
 
+    Example movement plans:
+    -----------------------
+
+    For a Sharepoint file located at:
+    https://justiceuk.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv
+
+    ```
+    data_movement_plan=[
+        {
+            "source": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "daily_report.csv"
+            },
+            "destination": {
+                "bucket": "my-destination-bucket",
+                "key": "path/to/daily_report.csv"
+            }
+        }
+    ]
+    ```
+
+    for an S3 file located at:
+    s3://my-source-bucket/path/to/file1.csv
+
+    ```
+    data_movement_plan=[
+        {
+            "source": {
+                "bucket": "my-source-bucket",
+                "key": "path/to/file1.csv"
+            },
+            "destination": {
+                "site": "analytics-site",
+                "library": "Documents",
+                "directory": "reports/2026/",
+                "filename": "file1.csv"
+            }
+        }
+    ]
+    ```
+
     """
+    load_dotenv()
     log.info("Starting file transfer process...")
 
-    if non_secret_env_vars:
-        setup_environment_variables(non_secret_env_vars)
+    run_mode = mode or os.getenv("MODE")
 
-    config = AppConfig()  # type: ignore[call-arg]
+    if run_mode not in ENGINE_MAP:
+        err = (
+            f"Invalid mode '{run_mode}'. Must be one of: {', '.join(ENGINE_MAP.keys())}"
+        )
+        log.error(err)
+        raise ValueError(err)
 
-    log.info(
-        "Configured transfer mode='%s', s3_bucket='%s', s3_key='%s', "
-        "sharepoint_target='%s%s'",
-        config.MODE,
-        config.S3_BUCKET,
-        config.FILE_KEY,
-        config.SP_FOLDER_PATH,
-        config.SP_FILE_NAME,
+    if data_movement_plan is None:
+        data_movement_plan_env = os.environ.get("DATA_MOVEMENT_PLAN")
+        if not data_movement_plan_env:
+            err = (
+                "No data movement plan has been provided. Please provide movement plans"
+                " via the 'DATA_MOVEMENT_PLAN' environment variable or as an argument"
+                " to the run function."
+            )
+            log.error(err)
+            raise ValueError(err)
+
+        data_movement_plan = utils.parse_data_movement_plan_from_env(
+            data_movement_plan_env
+        )
+
+    data_movement_plan = (
+        [data_movement_plan]
+        if isinstance(data_movement_plan, dict)
+        else data_movement_plan
     )
 
-    engine_class = ENGINE_MAP[config.MODE]
-    engine = engine_class(config=config)
+    engine_class = ENGINE_MAP[run_mode]["engine"]
+    movement_plan_class = ENGINE_MAP[run_mode]["plan"]
+    secrets = SecretConfig()  # type: ignore[call-arg]
 
-    try:
-        content = engine.download_file()
-        engine.upload_file(content)
-        log.info("File transfer completed successfully.")
-    except UploadError:
-        log.exception("File transfer failed")
-        raise
+    all_movement_plans = [
+        movement_plan_class(**movement_plan)  # type: ignore[arg-type]
+        for movement_plan in data_movement_plan
+    ]
+    final_data_movement_plan = DataMovementPlan(data_to_move=all_movement_plans)
+
+    plans = final_data_movement_plan.data_to_move
+    total = len(plans)
+    for i, plan in enumerate(plans, start=1):
+        log.info("Processing file %s/%s: %s", i, total, plan.s3_file_key)
+        engine = engine_class(secrets=secrets, plan=plan)
+
+        try:
+            content = engine.download_file()
+            engine.upload_file(content)
+            log.info("Completed file %s/%s: %s", i, total, plan.s3_file_key)
+        except UploadError:
+            log.exception("Failed file %s/%s: %s", i, total, plan.s3_file_key)
+            raise
 
 
 if __name__ == "__main__":
-    main()  # pragma: no cover
+    run()  # pragma: no cover

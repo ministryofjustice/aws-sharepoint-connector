@@ -1,7 +1,7 @@
 """Utility functions and fixtures for unit tests."""
 
 import json
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, Literal
 from unittest.mock import Mock, patch
@@ -10,6 +10,61 @@ import boto3
 import pandas as pd
 from azure.core.credentials import AccessToken
 from requests import Response
+
+from connector.config import DataMovementPlan, S3ToSPMovementPlan, SPToS3MovementPlan
+
+
+def create_s3_to_sp_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
+    """Return a sample S3 to SharePoint movement plan."""
+    plans: list[dict[str, dict[str, str]]] = [
+        {
+            "source": {"bucket": "my-source-bucket", "key": f"path/to/file{i}.csv"},
+            "destination": {
+                "site": "analytics-site" if i < 3 else f"analytics-site-{(i % 2) + 1}",
+                "library": "Documents",
+                "directory": "reports/2026/" if i < 6 else "",
+                "filename": f"file{i}.csv",
+            },
+        }
+        for i in range(1, 7)
+    ]
+
+    plans[5]["destination"] = {k: v for k, v in plans[5]["destination"].items() if v}
+
+    all_plans = [S3ToSPMovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
+    return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
+
+
+def create_sp_to_s3_movement_plan() -> tuple[
+    list[dict[str, dict[str, str]]], DataMovementPlan
+]:
+    """Return a sample SharePoint to S3 movement plan."""
+    plans: list[dict[str, dict[str, str]]] = [
+        {
+            "source": {
+                "site": "analytics-site" if i < 2 or i == 3 else "analytics-site-2",
+                "library": "Documents",
+                "directory": "reports/2026/" if i < 6 else "",
+                "filename": f"file{i}.csv",
+            },
+            "destination": {
+                "bucket": (
+                    "my-destination-bucket"
+                    if i < 3
+                    else f"my-destination-bucket-{(i % 2) + 1}"
+                ),
+                "key": f"path/to/file{i}.csv",
+            },
+        }
+        for i in range(1, 7)
+    ]
+    # Remove directory for file6 if it was set to None
+    plans[5]["source"] = {k: v for k, v in plans[5]["source"].items() if v is not None}
+
+    all_plans = [SPToS3MovementPlan(**plan) for plan in plans]  # type: ignore[arg-type]
+    return (plans, DataMovementPlan(data_to_move=all_plans))  # type: ignore[arg-type]
 
 
 def create_bucket(bucket_name: str, s3: boto3.client) -> None:
@@ -103,12 +158,7 @@ def mock_verify_uploaded_file_response(
 ) -> Response:
     """Mock response for the verify_uploaded_file function."""
     return build_response(
-        json_body={
-            "value": [
-                {"name": file_name, "size": size, "file": {}},
-                {"name": "other-file", "size": 1, "file": {}},
-            ]
-        },
+        json_body={"name": file_name, "size": size, "file": {}},
         status_code=status_code,
     )
 
@@ -122,17 +172,32 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
 def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,
     extra_get_side_effects: list[Response] | None = None,
+    num_files: int = 1,
 ) -> Generator[tuple[Mock, Mock, Mock], Any, Any]:
-    """Mock the underlying methods of SharePointConnector to avoid real API calls."""
-    post_side_effects: list[Callable[[], Response] | Response] = []
+    """Mock the underlying methods of SharePointConnector to avoid real API calls.
+
+    Args:
+        extra_post_side_effects: Additional POST responses beyond the defaults.
+        extra_get_side_effects: Additional GET responses (e.g., verify responses)
+            beyond setup.
+        num_files: Number of files being processed. Multiplies setup responses
+            for each.
+
+    """
+    post_side_effects: list[Response] = []
     if extra_post_side_effects:
         post_side_effects.extend(extra_post_side_effects)
 
-    get_side_effects: list[Callable[[], Response] | Response] = [
-        mock_site_id_response(),
-        mock_drive_id_response("complete"),
-        mock_ensure_destination_folder_response("folder"),
-    ]
+    # Build get_side_effects with setup responses (one set per file) + extra responses
+    get_side_effects: list[Response] = []
+
+    # Add setup response objects (one cycle per file)
+    for _ in range(num_files):
+        get_side_effects.append(mock_site_id_response())
+        get_side_effects.append(mock_drive_id_response("complete"))
+        get_side_effects.append(mock_ensure_destination_folder_response("folder"))
+
+    # Add extra responses (verify, download, etc.)
     if extra_get_side_effects:
         get_side_effects.extend(extra_get_side_effects)
 

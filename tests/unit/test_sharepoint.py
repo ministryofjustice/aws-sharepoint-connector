@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import requests
 
-from connector.config import AppConfig
+from connector.config import SecretConfig
+from connector.constants import MAX_CHUNK_RETRIES
 from connector.exceptions import UploadError
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
@@ -15,29 +16,31 @@ from tests import test_utils as utils
 
 def test_sharepoint_connector_initialization() -> None:
     """Test that the SharePoint connector sets derived fields on init."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     assert connector.headers == {
         "Authorization": "Bearer fake-token",
         "Accept": "application/json",
     }
     assert connector.drive_id == "fake-drive-id"
-    assert connector.file_path == "fake/folder/path/fake-file.csv"
+    assert connector.file_path == "reports/2026/file1.csv"
     assert (
         connector.base_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026/file1.csv:"
     )
 
 
 def test_set_graph_headers() -> None:
     """Test that the method to set graph headers returns the expected dict."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
         connector.set_graph_headers()
 
     assert connector.headers == {
@@ -48,10 +51,11 @@ def test_set_graph_headers() -> None:
 
 def test_ensure_destination_folder_success() -> None:
     """Test that ensure_destination_folder returns successfully when folder exists."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with patch(
         "connector.sharepoint.requests.get",
@@ -63,7 +67,7 @@ def test_ensure_destination_folder_success() -> None:
 
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026"
     )
     assert mock_get.call_args[1]["headers"] == {
         "Accept": "application/json",
@@ -86,10 +90,11 @@ def test_ensure_destination_folder_success() -> None:
 )
 def test_ensure_destination_folder_invalid_path(response: object, message: str) -> None:
     """Test that destination folder validation raises UploadError on bad paths."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with (
         patch("connector.sharepoint.requests.get", return_value=response),
@@ -100,10 +105,11 @@ def test_ensure_destination_folder_invalid_path(response: object, message: str) 
 
 def test_ensure_destination_folder_request_error() -> None:
     """Test that destination folder validation raises UploadError on request errors."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with (
         patch(
@@ -115,12 +121,31 @@ def test_ensure_destination_folder_request_error() -> None:
         connector.ensure_destination_folder(connector.drive_id, connector.headers)
 
 
-def test_get_site_id_success() -> None:
-    """Test that get_site_id returns the SharePoint site id."""
-    config = AppConfig()  # type: ignore[call-arg]
+def test_get_site_id_missing_id_raises() -> None:
+    """Test that get_site_id raises UploadError when Graph API omits 'id'."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            return_value=utils.build_response(status_code=200, json_body={}),
+        ),
+        pytest.raises(UploadError, match="no site ID"),
+    ):
+        connector.get_site_id()
+
+
+def test_get_site_id_success() -> None:
+    """Test that get_site_id returns the SharePoint site id."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with patch(
         "connector.sharepoint.requests.get",
@@ -131,7 +156,7 @@ def test_get_site_id_success() -> None:
     assert site_id == "fake-site-id"
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == (
-        "https://graph.microsoft.com/v1.0/sites/justiceuk.sharepoint.com:/sites/fake-site-name"
+        "https://graph.microsoft.com/v1.0/sites/justiceuk.sharepoint.com:/sites/analytics-site"
     )
     assert mock_get.call_args[1]["headers"] == {
         "Authorization": "Bearer fake-token",
@@ -148,7 +173,8 @@ def test_get_site_id_success() -> None:
 )
 def test_set_drive_id_error(exception: Exception) -> None:
     """Test that set_drive_id raises UploadError when drive id retrieval fails."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with (
         utils.sharepoint_connector_patches(),
@@ -158,40 +184,42 @@ def test_set_drive_id_error(exception: Exception) -> None:
         ),
         pytest.raises(UploadError),
     ):
-        SharePointConnector(config=config).set_drive_id()
+        SharePointConnector(secrets=secrets, plan=plan.data_to_move[0]).set_drive_id()
 
 
 def test_set_base_url() -> None:
     """Test that set_base_url constructs the expected base URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
         connector.set_base_url()
 
     assert (
         connector.base_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026/file1.csv:"
     )
 
 
-def test_create_upload_url() -> None:
-    """Test that create_upload_url stores the returned upload URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+def test_set_upload_url() -> None:
+    """Test that set_upload_url stores the returned upload URL."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with patch(
         "connector.sharepoint.requests.post",
         return_value=utils.mock_upload_url_response(),
     ) as mock_post:
-        connector.create_upload_url()
+        connector.set_upload_url()
 
     assert connector.upload_url == "https://fake-upload-url"
     assert mock_post.call_count == 1
     assert mock_post.call_args[0][0] == (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/createUploadSession"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026/file1.csv:/createUploadSession"
     )
     assert mock_post.call_args[1]["headers"] == {
         "Authorization": "Bearer fake-token",
@@ -200,34 +228,36 @@ def test_create_upload_url() -> None:
     assert mock_post.call_args[1]["json"] == {
         "item": {
             "@microsoft.graph.conflictBehavior": "replace",
-            "name": "fake-file.csv",
+            "name": "file1.csv",
         }
     }
 
 
-def test_create_download_url() -> None:
-    """Test that create_download_url sets the expected content URL."""
-    config = AppConfig()  # type: ignore[call-arg]
+def test_set_download_url() -> None:
+    """Test that set_download_url sets the expected content URL."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
-    connector.create_download_url()
+    connector.set_download_url()
 
     assert (
         connector.download_url
-        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path/fake-file.csv:/content"
+        == "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026/file1.csv:/content"
     )
 
 
 def test_fetch_file_success() -> None:
     """Test that fetch_file returns the response bytes."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
-    connector.create_download_url()
+    connector.set_download_url()
 
     with patch(
         "connector.sharepoint.requests.get",
@@ -240,12 +270,13 @@ def test_fetch_file_success() -> None:
 
 def test_fetch_file_not_found() -> None:
     """Test that fetch_file raises UploadError when the file is missing."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
-    connector.create_download_url()
+    connector.set_download_url()
 
     with (
         patch(
@@ -259,12 +290,13 @@ def test_fetch_file_not_found() -> None:
 
 def test_fetch_file_request_error() -> None:
     """Test that fetch_file raises UploadError on request errors."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
-    connector.create_download_url()
+    connector.set_download_url()
 
     with (
         patch(
@@ -288,13 +320,13 @@ def test_verify_uploaded_file_success(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that verify_uploaded_file succeeds when the uploaded file is present."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
-    if not folder_path:
-        config.SP_FOLDER_PATH = ""
+    file_plan = plan.data_to_move[5] if not folder_path else plan.data_to_move[0]
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=file_plan)
 
     expected_size = 13
 
@@ -303,7 +335,7 @@ def test_verify_uploaded_file_success(
             "connector.sharepoint.requests.get",
             return_value=utils.mock_verify_uploaded_file_response(
                 200,
-                config.SP_FILE_NAME,
+                file_plan.sp_file_name,
                 expected_size,
             ),
         ) as mock_verify,
@@ -312,15 +344,15 @@ def test_verify_uploaded_file_success(
         connector.verify_uploaded_file(expected_size=expected_size)
 
     assert (
-        f"Verified uploaded file '{config.SP_FILE_NAME}' ({expected_size} bytes)"
+        f"Verified uploaded file '{file_plan.sp_file_name}' ({expected_size} bytes)"
         in caplog.text
     )
     assert mock_verify.call_count == 1
 
     expected_path = (
-        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/fake/folder/path:/children?$select=name,size,file"
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports/2026/file1.csv:?$select=name,size,file"
         if folder_path
-        else "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root/children?$select=name,size,file"
+        else "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/file6.csv:?$select=name,size,file"
     )
     assert mock_verify.call_args[0][0] == expected_path
     assert mock_verify.call_args[1]["headers"] == {
@@ -331,17 +363,36 @@ def test_verify_uploaded_file_success(
 
 def test_verify_uploaded_not_found() -> None:
     """Test that verify_uploaded_file raises UploadError when the file is absent."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            return_value=utils.build_response(status_code=404),
+        ),
+        pytest.raises(UploadError, match="Verification failed"),
+    ):
+        connector.verify_uploaded_file(expected_size=12)
+
+
+def test_verify_uploaded_size_mismatch() -> None:
+    """Test that verify_uploaded_file raises UploadError when size does not match."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with (
         patch(
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
-                json_body={"value": [{"name": "other-file", "file": {}, "size": 10}]},
+                json_body={"name": "file1.csv", "size": 999, "file": {}},
             ),
         ),
         pytest.raises(UploadError, match="Verification failed"),
@@ -351,10 +402,11 @@ def test_verify_uploaded_not_found() -> None:
 
 def test_verify_uploaded_error() -> None:
     """Test that verify_uploaded_file raises UploadError when the file is absent."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with (
         patch(
@@ -368,10 +420,11 @@ def test_verify_uploaded_error() -> None:
 
 def test_get_next_start() -> None:
     """Test that get_next_start parses the next expected range."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     with patch(
         "connector.sharepoint.build_retry_session", return_value=MagicMock()
@@ -388,10 +441,11 @@ def test_get_next_start() -> None:
 
 def test_put_chunk() -> None:
     """Test that put_chunk sends the correct upload request data."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     connector.upload_url = "https://fake-upload-url"
     session = MagicMock()
@@ -418,10 +472,11 @@ def test_put_chunk() -> None:
 )
 def test_upload_stream_in_chunks_success(mock_verify: Mock) -> None:
     """Test that upload_stream_in_chunks uploads data and verifies the result."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
 
     session = MagicMock()
     session.get.return_value = utils.mock_get_next_start_response(0, 11)
@@ -456,10 +511,11 @@ def test_upload_stream_in_chunks_request_exception_logs_and_recovers(
     mock_verify: Mock, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test chunk upload logs warning/info and resumes after RequestException."""
-    config = AppConfig()  # type: ignore[call-arg]
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
         connector.upload_url = "https://fake-upload-url"
 
     session = MagicMock()
@@ -496,25 +552,58 @@ def test_upload_stream_in_chunks_request_exception_logs_and_recovers(
     "connector.sharepoint.SharePointConnector.verify_uploaded_file", return_value=None
 )
 def test_upload_stream_in_chunks_bad_request(mock_verify: Mock) -> None:
-    """Test that bad status responses call raise_for_status and trigger resume."""
-    config = AppConfig()  # type: ignore[call-arg]
+    """Test that a permanent 4xx error raises UploadError without retrying."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
 
     with utils.sharepoint_connector_patches():
-        connector = SharePointConnector(config=config)
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
         connector.upload_url = "https://fake-upload-url"
 
     bad_response = MagicMock()
     bad_response.status_code = 400
-    bad_response.raise_for_status.side_effect = requests.HTTPError("Mock HTTP error")
+
+    session = MagicMock()
+    session.get.return_value = utils.mock_get_next_start_response(0, 11)
+    session.put.return_value = bad_response
+
+    with (
+        patch("connector.sharepoint.CHUNK_SIZE", 11),
+        patch("connector.sharepoint.build_retry_session", return_value=session),
+        pytest.raises(UploadError, match="permanent HTTP 400"),
+    ):
+        connector.upload_stream_in_chunks(
+            BytesIO(b"This11bytesThat11bytesAlso11bytes"), 33
+        )
+
+    session.put.assert_called_once()  # No retries on permanent error
+    mock_verify.assert_not_called()  # No verification if upload failed
+
+
+@patch(
+    "connector.sharepoint.SharePointConnector.verify_uploaded_file", return_value=None
+)
+def test_upload_stream_in_chunks_transient_server_error_recovers(
+    mock_verify: Mock,
+) -> None:
+    """Test that a transient 5xx response triggers a resume and eventual success."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+        connector.upload_url = "https://fake-upload-url"
+
+    server_error = MagicMock()
+    server_error.status_code = 503
 
     session = MagicMock()
     session.get.side_effect = [
-        utils.mock_get_next_start_response(0, 11),
-        utils.mock_get_next_start_response(11, 22),
+        utils.mock_get_next_start_response(0, 11),  # initial start
+        utils.mock_get_next_start_response(0, 11),  # resume after 503
     ]
     session.put.side_effect = [
-        bad_response,
-        utils.mock_session_put_response(),
+        server_error,
         utils.mock_session_put_response(),
     ]
 
@@ -522,11 +611,111 @@ def test_upload_stream_in_chunks_bad_request(mock_verify: Mock) -> None:
         patch("connector.sharepoint.CHUNK_SIZE", 11),
         patch("connector.sharepoint.build_retry_session", return_value=session),
     ):
+        connector.upload_stream_in_chunks(BytesIO(b"This11bytes"), 11)
+
+    assert session.get.call_count == 2
+    assert session.put.call_count == 2
+    mock_verify.assert_called_once_with(expected_size=11)
+
+
+@patch(
+    "connector.sharepoint.SharePointConnector.verify_uploaded_file", return_value=None
+)
+def test_upload_stream_in_chunks_transient_server_error_advances(
+    mock_verify: Mock,
+) -> None:
+    """Test that a 5xx response resumes and logs when server advances position."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+        connector.upload_url = "https://fake-upload-url"
+
+    server_error = MagicMock()
+    server_error.status_code = 503
+
+    session = MagicMock()
+    session.get.side_effect = [
+        utils.mock_get_next_start_response(0, 11),  # initial start
+        utils.mock_get_next_start_response(11, 22),  # server advanced to 11 after 503
+    ]
+    session.put.side_effect = [
+        server_error,
+        utils.mock_session_put_response(),
+    ]
+
+    with (
+        patch("connector.sharepoint.CHUNK_SIZE", 11),
+        patch("connector.sharepoint.build_retry_session", return_value=session),
+    ):
+        connector.upload_stream_in_chunks(BytesIO(b"This11bytesThat11bytes"), 22)
+
+    assert session.get.call_count == 2
+    assert session.put.call_count == 2
+    mock_verify.assert_called_once_with(expected_size=22)
+
+
+@patch(
+    "connector.sharepoint.SharePointConnector.verify_uploaded_file", return_value=None
+)
+def test_upload_stream_in_chunks_transient_max_retries_raises(
+    mock_verify: Mock,
+) -> None:
+    """Test that UploadError is raised after MAX_CHUNK_RETRIES consecutive 5xx."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+        connector.upload_url = "https://fake-upload-url"
+
+    server_error = MagicMock()
+    server_error.status_code = 503
+
+    session = MagicMock()
+    # One initial get + one get per failed chunk
+    session.get.side_effect = [
+        utils.mock_get_next_start_response(0, 11) for _ in range(MAX_CHUNK_RETRIES + 1)
+    ]
+    session.put.return_value = server_error
+
+    with (
+        patch("connector.sharepoint.CHUNK_SIZE", 11),
+        patch("connector.sharepoint.build_retry_session", return_value=session),
+        pytest.raises(UploadError, match="retries"),
+    ):
         connector.upload_stream_in_chunks(
             BytesIO(b"This11bytesThat11bytesAlso11bytes"), 33
         )
 
-    bad_response.raise_for_status.assert_called_once_with()
-    assert session.get.call_count == 2
-    assert session.put.call_count == 3
-    mock_verify.assert_called_once_with(expected_size=33)
+    mock_verify.assert_not_called()
+
+
+@patch(
+    "connector.sharepoint.SharePointConnector.verify_uploaded_file", return_value=None
+)
+def test_upload_stream_in_chunks_max_retries_raises(mock_verify: Mock) -> None:
+    """Test that UploadError is raised after MAX_CHUNK_RETRIES consecutive failures."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    _, plan = utils.create_sp_to_s3_movement_plan()
+
+    with utils.sharepoint_connector_patches():
+        connector = SharePointConnector(secrets=secrets, plan=plan.data_to_move[0])
+        connector.upload_url = "https://fake-upload-url"
+
+    session = MagicMock()
+    session.get.return_value = utils.mock_get_next_start_response(0, 11)
+    # All PUT attempts raise a network error
+    session.put.side_effect = requests.RequestException("persistent network error")
+
+    with (
+        patch("connector.sharepoint.CHUNK_SIZE", 11),
+        patch("connector.sharepoint.build_retry_session", return_value=session),
+        pytest.raises(UploadError, match="retries"),
+    ):
+        connector.upload_stream_in_chunks(
+            BytesIO(b"This11bytesThat11bytesAlso11bytes"), 33
+        )
+
+    mock_verify.assert_not_called()

@@ -1,29 +1,27 @@
 """SharePoint connector for handling interactions with Microsoft Graph API."""
 
 import logging
-import time
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any
 from urllib.parse import quote
 
 import requests
 from pydantic import BaseModel, Field
 
 from connector import auth
-from connector.config import AppConfig
+from connector.config import S3ToSPMovementPlan, SecretConfig, SPToS3MovementPlan
 from connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
-    RETRYABLE_ERROR_CODES,
+    MAX_CHUNK_RETRIES,
+    SERVER_ERROR_CODE,
     SHAREPOINT_DOMAIN,
+    TOO_MANY_REQUESTS_CODE,
 )
 from connector.exceptions import UploadError
-from connector.utils import build_retry_session
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from connector.utils import build_retry_session, request_with_retry
 
 log = logging.getLogger("s3-sharepoint")
 
@@ -31,7 +29,8 @@ log = logging.getLogger("s3-sharepoint")
 class SharePointConnector(BaseModel):
     """Connector for interacting with SharePoint via Microsoft Graph API."""
 
-    config: AppConfig
+    secrets: SecretConfig
+    plan: S3ToSPMovementPlan | SPToS3MovementPlan
     headers: dict[str, str] = Field(default_factory=dict, init=False)
     drive_id: str = Field(default="", init=False)
     base_url: str = Field(default="", init=False)
@@ -39,71 +38,21 @@ class SharePointConnector(BaseModel):
     download_url: str = Field(default="", init=False)
     file_path: str = Field(default="", init=False)
 
-    def _request_with_retry(
-        self,
-        method: Literal["GET", "POST"],
-        url: str,
-        *,
-        max_attempts: int = 3,
-        **kwargs: Any,  # noqa: ANN401
-    ) -> requests.Response:
-        """Issue a GET/POST request with bounded retries for transient failures."""
-        if method == "GET":
-            request_fn: Callable[..., requests.Response] = requests.get
-        elif method == "POST":
-            request_fn = requests.post
-        else:
-            err = f"Unsupported HTTP method: {method}"
-            raise ValueError(err)
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = request_fn(url, **kwargs)
-                if (
-                    response.status_code in RETRYABLE_ERROR_CODES
-                    and attempt < max_attempts
-                ):
-                    log.warning(
-                        "%s %s returned %s (attempt %s/%s), retrying...",
-                        method,
-                        url,
-                        response.status_code,
-                        attempt,
-                        max_attempts,
-                    )
-                    time.sleep(0.5 * attempt)
-                else:
-                    return response
-            except requests.RequestException:
-                if attempt == max_attempts:
-                    raise
-                log.warning(
-                    "%s %s failed (attempt %s/%s), retrying...",
-                    method,
-                    url,
-                    attempt,
-                    max_attempts,
-                )
-                time.sleep(0.5 * attempt)
-
-        err = f"Failed to execute {method} request to {url}"
-        raise UploadError(err)
-
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
-        self.file_path = f"{self.config.SP_FOLDER_PATH}{self.config.SP_FILE_NAME}"
+        self.file_path = f"{self.plan.sp_directory}{self.plan.sp_file_name}"
         self.set_graph_headers()
         self.set_drive_id()
         self.set_base_url()
 
     def set_graph_headers(self) -> None:
-        """Obtain azure token and generate headers for the sharepoint App."""
+        """Obtain Azure token and generate headers for the sharepoint App."""
         log.info("Requesting Azure Graph API token...")
 
         token = auth.get_azure_token(
-            str(self.config.SECRET_AZURE_TENANT_ID),
-            self.config.SECRET_AZURE_CLIENT_ID.get_secret_value(),
-            self.config.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
+            str(self.secrets.SECRET_AZURE_TENANT_ID),
+            self.secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
+            self.secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
 
         log.info("Successfully retrieved Azure Graph API token.")
@@ -129,15 +78,16 @@ class SharePointConnector(BaseModel):
         """
         folder_meta_url = (
             f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/"
-            f"{quote(self.config.SP_FOLDER_PATH.strip('/'), safe='/')}"
+            f"{quote(self.plan.sp_directory.strip('/'), safe='/')}"
         )
         try:
-            folder_resp = self._request_with_retry(
+            folder_resp = request_with_retry(
                 "GET", folder_meta_url, headers=headers, timeout=30
             )
             if folder_resp.status_code == DOES_NOT_EXIST_CODE:
                 err = (
-                    f"Destination folder does not exist: '{self.config.SP_FOLDER_PATH}'"
+                    f"Destination folder does not exist: '{self.plan.sp_directory}'."
+                    " Please create the folder in SharePoint."
                 )
                 raise UploadError(err)
             folder_resp.raise_for_status()
@@ -145,7 +95,7 @@ class SharePointConnector(BaseModel):
             if "folder" not in folder_meta:
                 err = (
                     "Destination path exists but is not a folder: "
-                    f"'{self.config.SP_FOLDER_PATH}'"
+                    f"'{self.plan.sp_directory}'"
                 )
                 raise UploadError(err)
         except requests.RequestException as exc:
@@ -162,19 +112,23 @@ class SharePointConnector(BaseModel):
             str: The ID of the SharePoint site.
 
         """
-        site_path = f"/sites/{self.config.SP_SITE_NAME}"
+        site_path = f"/sites/{self.plan.sp_site}"
 
         site_url = (
             f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_DOMAIN}{site_path}"
         )
 
-        site_response = self._request_with_retry(
+        site_response = request_with_retry(
             "GET", site_url, headers=self.headers, timeout=60
         )
 
         site_response.raise_for_status()
 
-        return site_response.json().get("id")  # type: ignore[no-any-return]
+        site_id: str | None = site_response.json().get("id")
+        if site_id is None:
+            err = f"Graph API returned no site ID for '{self.plan.sp_site}'"
+            raise UploadError(err)
+        return site_id
 
     def set_drive_id(self) -> None:
         """Fetch the drive ID for the specified SharePoint library.
@@ -188,13 +142,15 @@ class SharePointConnector(BaseModel):
 
         """
         log.info(
-            "Fetching drive ID for library '%s' in site...", self.config.SP_LIBRARY_NAME
+            "Fetching drive ID for library '%s' in site '%s'...",
+            self.plan.sp_library,
+            self.plan.sp_site,
         )
         try:
             site_id = self.get_site_id()
             drive_id = auth.get_drive_id(
                 site_id,
-                self.config.SP_LIBRARY_NAME,
+                self.plan.sp_library,
                 self.headers,
             )
             log.info("Found drive ID")
@@ -217,7 +173,7 @@ class SharePointConnector(BaseModel):
         encoded_path = quote(self.file_path, safe="/")
         self.base_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:"
 
-    def create_upload_url(self) -> None:
+    def set_upload_url(self) -> None:
         """Generate the target SharePoint url for uploading to.
 
         Args:
@@ -236,7 +192,7 @@ class SharePointConnector(BaseModel):
             }
         }
         upload_session_url = f"{self.base_url}/createUploadSession"
-        session_resp = self._request_with_retry(
+        session_resp = request_with_retry(
             "POST",
             upload_session_url,
             headers=self.headers,
@@ -251,7 +207,7 @@ class SharePointConnector(BaseModel):
 
         self.upload_url = url
 
-    def create_download_url(self) -> None:
+    def set_download_url(self) -> None:
         """Generate the source SharePoint url to download from.
 
         Args:
@@ -279,7 +235,7 @@ class SharePointConnector(BaseModel):
         log.info("Fetching file from SharePoint...")
 
         try:
-            file_resp = self._request_with_retry(
+            file_resp = request_with_retry(
                 "GET",
                 self.download_url,
                 headers=self.headers,
@@ -306,44 +262,31 @@ class SharePointConnector(BaseModel):
             None
 
         """
+        expected_name = Path(self.file_path).name
+        verify_url = f"{self.base_url}?$select=name,size,file"
         try:
-            if self.config.SP_FOLDER_PATH.strip("/"):
-                children_url = (
-                    f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/"
-                    f"{quote(self.config.SP_FOLDER_PATH.strip('/'), safe='/')}"
-                    f":/children?$select=name,size,file"
-                )
-            else:
-                children_url = (
-                    f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root/children"
-                    f"?$select=name,size,file"
-                )
-            resp = self._request_with_retry(
-                "GET", children_url, headers=self.headers, timeout=30
+            resp = request_with_retry(
+                "GET", verify_url, headers=self.headers, timeout=30
             )
+            if resp.status_code == DOES_NOT_EXIST_CODE:
+                err = (
+                    f"Verification failed: file '{expected_name}'"
+                    " not found in SharePoint."
+                )
+                raise UploadError(err)
             resp.raise_for_status()
-            items = resp.json().get("value", [])
-            expected_name = Path(self.file_path).name
-            matched_item = next(
-                (
-                    item
-                    for item in items
-                    if item.get("name") == expected_name and "file" in item
-                ),
-                None,
-            )
-            if matched_item is not None and matched_item.get("size") == expected_size:
-                log.info(
-                    "Verified uploaded file '%s' (%s bytes)",
-                    expected_name,
-                    expected_size,
+            item = resp.json()
+            if "file" not in item or item.get("size") != expected_size:
+                err = (
+                    f"Verification failed: file '{expected_name}' not found with size "
+                    f"{expected_size} bytes."
                 )
-                return
-            err = (
-                f"Verification failed: file '{expected_name}' not found with size "
-                f"{expected_size} bytes."
+                raise UploadError(err)
+            log.info(
+                "Verified uploaded file '%s' (%s bytes)",
+                expected_name,
+                expected_size,
             )
-            raise UploadError(err)
         except requests.RequestException as exc:
             err = f"Failed to verify uploaded file: {exc}"
             raise UploadError(err) from exc
@@ -408,6 +351,7 @@ class SharePointConnector(BaseModel):
         file.seek(start)
 
         last_logged_pct = -10
+        chunk_retries = 0
         while start < file_size:
             remaining = file_size - start
             chunk_size = CHUNK_SIZE if CHUNK_SIZE > 0 else remaining
@@ -420,18 +364,49 @@ class SharePointConnector(BaseModel):
                     file_size=file_size,
                     session=session,
                 )
-                if r.status_code >= BAD_REQUEST_CODE:
-                    r.raise_for_status()
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as exc:
+                chunk_retries += 1
+                if chunk_retries > MAX_CHUNK_RETRIES:
+                    err = (
+                        f"Chunk upload failed after {MAX_CHUNK_RETRIES} retries: {exc}"
+                    )
+                    raise UploadError(err) from exc
                 log.warning("Chunk upload failed, attempting to resume...")
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
                     log.info("Resuming from %s after partial upload", f"{resume_at:,}")
-                    file.seek(resume_at)
                     start = resume_at
+                file.seek(start)
+                continue
+
+            # Permanent 4xx client errors (excluding 429) must not be retried
+            is_permanent_error = (
+                BAD_REQUEST_CODE <= r.status_code < SERVER_ERROR_CODE
+                and r.status_code != TOO_MANY_REQUESTS_CODE
+            )
+            if is_permanent_error:
+                err = f"Chunk upload failed with permanent HTTP {r.status_code} error"
+                raise UploadError(err)
+
+            # Transient server errors (429, 5xx): attempt resume
+            if r.status_code >= BAD_REQUEST_CODE:
+                chunk_retries += 1
+                if chunk_retries > MAX_CHUNK_RETRIES:
+                    err = (
+                        f"Chunk upload failed with HTTP {r.status_code}"
+                        f" after {MAX_CHUNK_RETRIES} retries"
+                    )
+                    raise UploadError(err)
+                log.warning("Chunk upload failed, attempting to resume...")
+                resume_at = self.get_next_start(session=session)
+                if resume_at != start:
+                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    start = resume_at
+                file.seek(start)
                 continue
 
             start += len(chunk)
+            chunk_retries = 0
             pct = int((start / file_size) * 100)
             if pct // 10 > last_logged_pct // 10:
                 log.info(

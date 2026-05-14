@@ -1,11 +1,22 @@
 """Utility functions for the SharePoint connector."""
 
+import ast
+import json
 import logging
 import sys
+import time
+from typing import TYPE_CHECKING, Any, Literal
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from connector.constants import RETRYABLE_ERROR_CODES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+log = logging.getLogger("s3-sharepoint")
 
 
 def setup_logger() -> logging.Logger:
@@ -35,3 +46,79 @@ def build_retry_session() -> requests.Session:
     )
     session.mount("https://", HTTPAdapter(max_retries=retry))
     return session
+
+
+def parse_data_movement_plan_from_env(
+    data_movement_plan: str,
+) -> list[dict[str, dict[str, str]]]:
+    """Parse DATA_MOVEMENT_PLAN from an env var string into validated plan dicts.
+
+    Supports both strict JSON and Python-literal-like input.
+    """
+    try:
+        parsed_plans = json.loads(data_movement_plan)
+    except json.JSONDecodeError:
+        try:
+            parsed_plans = ast.literal_eval(data_movement_plan)
+        except (ValueError, SyntaxError) as exc:
+            err = f"Failed to parse DATA_MOVEMENT_PLAN as JSON or Python literal: {exc}"
+            raise ValueError(err) from exc
+
+    if isinstance(parsed_plans, dict):
+        return [parsed_plans]
+
+    if isinstance(parsed_plans, list) and all(
+        isinstance(item, dict) for item in parsed_plans
+    ):
+        return parsed_plans
+
+    err = "DATA_MOVEMENT_PLAN must decode to a dict or a list of dicts."
+    raise ValueError(err)
+
+
+def request_with_retry(
+    method: Literal["GET", "POST"],
+    url: str,
+    *,
+    max_attempts: int = 3,
+    **kwargs: Any,  # noqa: ANN401
+) -> requests.Response:
+    """Issue a GET/POST request with bounded retries for transient failures."""
+    if method == "GET":
+        request_fn: Callable[..., requests.Response] = requests.get
+    elif method == "POST":
+        request_fn = requests.post
+    else:
+        err = f"Unsupported HTTP method: {method}"
+        raise ValueError(err)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = request_fn(url, **kwargs)
+            if response.status_code in RETRYABLE_ERROR_CODES and attempt < max_attempts:
+                log.warning(
+                    "%s %s returned %s (attempt %s/%s), retrying...",
+                    method,
+                    url,
+                    response.status_code,
+                    attempt,
+                    max_attempts,
+                )
+                time.sleep(0.5 * attempt)
+            else:
+                return response
+        except requests.RequestException:
+            if attempt == max_attempts:
+                raise
+            log.warning(
+                "%s %s failed (attempt %s/%s), retrying...",
+                method,
+                url,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(0.5 * attempt)
+
+    # Unreachable: loop always returns or raises
+    msg = f"Failed to execute {method} request to {url}"  # pragma: no cover
+    raise RuntimeError(msg)  # pragma: no cover
