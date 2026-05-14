@@ -20,11 +20,6 @@ dependencies = [
     "requests>=2.32.4",
     "types-requests>=2.33.0.20260408",
 ]
-classifiers = [
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-]
-
 
 [project.urls]
 Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
