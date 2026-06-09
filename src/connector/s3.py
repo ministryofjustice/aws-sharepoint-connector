@@ -1,15 +1,13 @@
 """S3 connector for handling interactions with Amazon S3."""
 
-from dataclasses import dataclass
-
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel
 
 from connector.exceptions import UploadError
 
 
-@dataclass
-class S3Connector:
+class S3Connector(BaseModel):
     """Connector for handling interactions with Amazon S3."""
 
     client: boto3.client
