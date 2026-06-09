@@ -5,56 +5,100 @@ from typing import Literal, TypedDict
 
 from dotenv import load_dotenv
 
-from connector import utils
-from connector.config import (
-    DataMovementPlan,
-    S3ToSPMovementPlan,
-    SecretConfig,
-    SPToS3MovementPlan,
-)
+from connector import config, utils
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from connector.exceptions import UploadError
 
 log = utils.setup_logger()
 
 
-class EngineMapDict(TypedDict):
+class ModeMapDict(TypedDict):
     """TypedDict for mapping connector modes to movement plans and engines."""
 
-    plan: type[S3ToSPMovementPlan | SPToS3MovementPlan]
+    plan: type[config.S3ToSPMovementPlan | config.SPToS3MovementPlan]
     engine: type[UploadToSharePointEngine | UploadToS3Engine]
 
 
-ENGINE_MAP: dict[str, EngineMapDict] = {
+MODE_MAP: dict[str, ModeMapDict] = {
     "write_to_s3": {
-        "plan": SPToS3MovementPlan,
+        "plan": config.SPToS3MovementPlan,
         "engine": UploadToS3Engine,
     },
     "write_to_sharepoint": {
-        "plan": S3ToSPMovementPlan,
+        "plan": config.S3ToSPMovementPlan,
         "engine": UploadToSharePointEngine,
     },
 }
 
 
-def run(
-    mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
-    data_movement_plan: list[dict[str, dict[str, str]]] | None = None,
-) -> None:
-    """Entry point for the connector application.
+def validate_mode(mode: str | None) -> str:
+    """Validate that the provided mode is one of the allowed modes.
 
     Args:
-        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): Optional
-            argument to specify whether to copy a file from s3 to Sharepoint or
-            vice versa. If not provided, the mode will be read from environment
-            variables or a .env file.
-        data_movement_plan (list[dict[str, dict[str, str]]] | None): Optional
-            argument to specify the files to be moved and their destinations.
-            If not provided, the movement plan will be read from environment variables
-            or a .env file.
+        mode (str | None): The mode to validate.
 
     Returns:
-        None
+        str: The validated mode.
+
+    Raises:
+        ValueError: If the mode is not valid.
+
+    """
+    run_mode = mode or os.getenv("MODE")
+    if run_mode not in MODE_MAP:
+        err = f"Invalid mode '{run_mode}'. Must be one of: {', '.join(MODE_MAP.keys())}"
+        log.error(err)
+        raise ValueError(err)
+    return run_mode
+
+
+def create_engine(
+    mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
+) -> tuple[type[UploadToSharePointEngine | UploadToS3Engine], config.SecretConfig]:
+    """Create an engine instance based on the mode.
+
+    Args:
+        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): The mode of
+            operation determining the type of engine to create.
+
+    Returns:
+        tuple[type[UploadToSharePointEngine | UploadToS3Engine], config.SecretConfig]:
+            A tuple containing the engine class and the secrets configuration.
+
+    Raises:
+        ValueError: If an invalid mode is provided.
+
+    """
+    load_dotenv()
+    run_mode = validate_mode(mode)
+
+    secrets = config.SecretConfig()  # type: ignore[call-arg]
+
+    log.info("Creating engine for mode: %s", run_mode)
+
+    engine_class = MODE_MAP[run_mode]["engine"]
+    return engine_class, secrets
+
+
+def create_movement_plan(
+    data_movement_plan: list[config.S3ToSPMPDict] | list[config.SPToS3MPDict],
+    mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
+) -> config.DataMovementPlan:
+    """Create a DataMovementPlan from a list of movement plan dictionaries.
+
+    Args:
+        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): The mode of
+            operation determining the type of movement plan to create.
+        data_movement_plan (list[config.S3ToSPMPDict] | list[config.SPToS3MPDict]):
+            A list of dictionaries representing the movement plans to be validated and
+            converted into a DataMovementPlan instance.
+
+    Returns:
+        config.DataMovementPlan: An instance of DataMovementPlan containing the
+            validated movement plans.
+
+    Raises:
+        ValueError: If an invalid mode is provided or if the movement plans are not
+            valid according to the specified mode.
 
     Example movement plans:
     -----------------------
@@ -101,47 +145,12 @@ def run(
 
     """
     load_dotenv()
-    log.info("Starting file transfer process...")
+    run_mode = validate_mode(mode)
 
-    run_mode = mode or os.getenv("MODE")
-
-    if run_mode not in ENGINE_MAP:
-        err = (
-            f"Invalid mode '{run_mode}'. Must be one of: {', '.join(ENGINE_MAP.keys())}"
-        )
-        log.error(err)
-        raise ValueError(err)
-
-    data_movement_plan = (
-        [data_movement_plan]
-        if isinstance(data_movement_plan, dict)
-        else data_movement_plan
-    )
-
-    engine_class = ENGINE_MAP[run_mode]["engine"]
-    movement_plan_class = ENGINE_MAP[run_mode]["plan"]
-    secrets = SecretConfig()  # type: ignore[call-arg]
+    movement_plan_class = MODE_MAP[run_mode]["plan"]
 
     all_movement_plans = [
         movement_plan_class(**movement_plan)  # type: ignore[arg-type]
         for movement_plan in data_movement_plan
     ]
-    final_data_movement_plan = DataMovementPlan(data_to_move=all_movement_plans)
-
-    plans = final_data_movement_plan.data_to_move
-    total = len(plans)
-    for i, plan in enumerate(plans, start=1):
-        log.info("Processing file %s/%s: %s", i, total, plan.s3_file_key)
-        engine = engine_class(secrets=secrets, plan=plan)
-
-        try:
-            content = engine.download_file()
-            engine.upload_file(content)
-            log.info("Completed file %s/%s: %s", i, total, plan.s3_file_key)
-        except UploadError:
-            log.exception("Failed file %s/%s: %s", i, total, plan.s3_file_key)
-            raise
-
-
-if __name__ == "__main__":
-    run()  # pragma: no cover
+    return config.DataMovementPlan(data_to_move=all_movement_plans)
