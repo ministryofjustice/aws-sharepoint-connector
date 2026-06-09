@@ -1,5 +1,6 @@
 """Configuration models for the file movement plans and secrets."""
 
+from typing import TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel, SecretStr, field_validator, model_validator
@@ -240,6 +241,36 @@ class DataMovementPlan(BaseModel):
             err = "data_to_move must contain at least one movement plan."
             raise ValueError(err)
         return v
+
+
+class S3FileDict(TypedDict):
+    """TypedDict for defining the structure of an S3 file in the movement plan."""
+
+    bucket: str
+    key: str
+
+
+class SharePointFileDict(TypedDict):
+    """TypedDict for defining the structure of a SharePoint file in a movement plan."""
+
+    site: str
+    library: str
+    directory: str | None
+    filename: str
+
+
+class S3ToSPMPDict(TypedDict):
+    """TypedDict for defining the structure of a movement plan from S3 to SharePoint."""
+
+    source: dict[str, S3FileDict]
+    destination: dict[str, SharePointFileDict]
+
+
+class SPToS3MPDict(TypedDict):
+    """TypedDict for defining the structure of a movement plan from SharePoint to S3."""
+
+    source: dict[str, SharePointFileDict]
+    destination: dict[str, S3FileDict]
 
 
 class SecretConfig(BaseSettings):
