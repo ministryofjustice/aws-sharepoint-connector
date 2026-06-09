@@ -82,7 +82,7 @@ def create_engine(
 def create_movement_plan(
     data_movement_plan: list[config.S3ToSPMPDict] | list[config.SPToS3MPDict],
     mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
-) -> config.DataMovementPlan:
+) -> list[config.S3ToSPMovementPlan] | list[config.SPToS3MovementPlan]:
     """Create a DataMovementPlan from a list of movement plan dictionaries.
 
     Args:
@@ -93,8 +93,8 @@ def create_movement_plan(
             converted into a DataMovementPlan instance.
 
     Returns:
-        config.DataMovementPlan: An instance of DataMovementPlan containing the
-            validated movement plans.
+        list[config.S3ToSPMovementPlan] | list[config.SPToS3MovementPlan]:
+            A list of validated movement plans.
 
     Raises:
         ValueError: If an invalid mode is provided or if the movement plans are not
@@ -149,8 +149,8 @@ def create_movement_plan(
 
     movement_plan_class = MODE_MAP[run_mode]["plan"]
 
-    all_movement_plans = [
-        movement_plan_class(**movement_plan)  # type: ignore[arg-type]
-        for movement_plan in data_movement_plan
+    movement_plan: list[config.S3ToSPMovementPlan] | list[config.SPToS3MovementPlan] = [  # type: ignore[assignment]
+        movement_plan_class(**movement_plan) for movement_plan in data_movement_plan
     ]
-    return config.DataMovementPlan(data_to_move=all_movement_plans)
+
+    return movement_plan
