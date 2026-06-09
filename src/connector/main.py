@@ -112,21 +112,6 @@ def run(
         log.error(err)
         raise ValueError(err)
 
-    if data_movement_plan is None:
-        data_movement_plan_env = os.environ.get("DATA_MOVEMENT_PLAN")
-        if not data_movement_plan_env:
-            err = (
-                "No data movement plan has been provided. Please provide movement plans"
-                " via the 'DATA_MOVEMENT_PLAN' environment variable or as an argument"
-                " to the run function."
-            )
-            log.error(err)
-            raise ValueError(err)
-
-        data_movement_plan = utils.parse_data_movement_plan_from_env(
-            data_movement_plan_env
-        )
-
     data_movement_plan = (
         [data_movement_plan]
         if isinstance(data_movement_plan, dict)
