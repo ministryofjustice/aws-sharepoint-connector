@@ -23,7 +23,7 @@ from connector.constants import (
     SHAREPOINT_DOMAIN,
     TOO_MANY_REQUESTS_CODE,
 )
-from connector.exceptions import UploadError
+from connector.exceptions import NoLibraryError, UploadError
 from connector.utils import build_retry_session, request_with_retry
 
 log = logging.getLogger("s3-sharepoint")
@@ -94,12 +94,9 @@ class SharePointConnector(BaseModel):
     def set_drive_id(self) -> None:
         """Fetch the drive ID for the specified SharePoint library.
 
-        Args:
-            headers (dict[str, str]): The headers to use for the request..
-
         Raises:
-            UploadError: If the drive ID cannot be retrieved due to an HTTP error
-                or if the specified library is not found on the site.
+            UploadError: If the drive ID cannot be retrieved, the site is
+                unreachable, or the specified library is not found on the site.
 
         """
         log.info(
@@ -114,11 +111,18 @@ class SharePointConnector(BaseModel):
                 self.library.library,
                 self.headers,
             )
-            log.info("Found drive ID")
-
+            log.info(
+                "Found drive ID for library '%s' in site '%s'",
+                self.library.library,
+                self.library.site,
+            )
             self.drive_id = drive_id
-        except (requests.HTTPError, ValueError) as exc:
-            raise UploadError(str(exc)) from exc
+        except (requests.HTTPError, ValueError, NoLibraryError) as exc:
+            err = (
+                f"Could not connect to SharePoint library '{self.library.library}' "
+                f"in site '{self.library.site}': {exc}"
+            )
+            raise UploadError(err) from exc
 
     def set_base_url(self) -> None:
         """Generate the base URL for the target file in SharePoint.
@@ -193,6 +197,77 @@ class SharePointConnector(BaseModel):
         log.info("Creating SharePoint download URL...")
 
         self.download_url = f"{self.base_url}/content"
+
+    def check_file_exists(self, file_path: str) -> None:
+        """Check that a file exists in SharePoint before attempting to download it.
+
+        Args:
+            file_path (str): The file path within the SharePoint library.
+
+        Raises:
+            UploadError: If the file does not exist, the path points to a folder,
+                or the check request fails.
+
+        """
+        encoded_path = quote(file_path, safe="/")
+        check_url = (
+            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+            f"/root:/{encoded_path}:?$select=name,file"
+        )
+        try:
+            resp = request_with_retry(
+                "GET", check_url, headers=self.headers, timeout=30
+            )
+            if resp.status_code == DOES_NOT_EXIST_CODE:
+                err = f"Source file not found in SharePoint: '{file_path}'"
+                raise UploadError(err)
+            resp.raise_for_status()
+            item = resp.json()
+            if "file" not in item:
+                err = f"SharePoint path '{file_path}' exists but is not a file"
+                raise UploadError(err)
+        except UploadError:
+            raise
+        except requests.RequestException as exc:
+            err = f"Failed to check SharePoint file existence for '{file_path}': {exc}"
+            raise UploadError(err) from exc
+
+    def check_folder_exists(self, folder_path: str) -> None:
+        """Check that a folder exists in SharePoint before attempting to upload into it.
+
+        Args:
+            folder_path (str): The folder path within the SharePoint library.
+
+        Raises:
+            UploadError: If the folder does not exist, the path points to a file,
+                or the check request fails.
+
+        """
+        encoded_path = quote(folder_path, safe="/")
+        check_url = (
+            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+            f"/root:/{encoded_path}:?$select=name,folder"
+        )
+        try:
+            resp = request_with_retry(
+                "GET", check_url, headers=self.headers, timeout=30
+            )
+            if resp.status_code == DOES_NOT_EXIST_CODE:
+                err = f"Destination folder not found in SharePoint: '{folder_path}'"
+                raise UploadError(err)
+            resp.raise_for_status()
+            item = resp.json()
+            if "folder" not in item:
+                err = f"SharePoint path '{folder_path}' exists but is not a folder"
+                raise UploadError(err)
+        except UploadError:
+            raise
+        except requests.RequestException as exc:
+            err = (
+                f"Failed to check SharePoint folder existence for '{folder_path}':"
+                f" {exc}"
+            )
+            raise UploadError(err) from exc
 
     def fetch_file(self) -> bytes:
         """Fetch a file from SharePoint.
@@ -327,8 +402,7 @@ class SharePointConnector(BaseModel):
         chunk_retries = 0
         while start < file_size:
             remaining = file_size - start
-            chunk_size = CHUNK_SIZE if CHUNK_SIZE > 0 else remaining
-            to_read = min(chunk_size, remaining)
+            to_read = min(CHUNK_SIZE, remaining)
             chunk = file.read(to_read)
             try:
                 r = self.put_chunk(

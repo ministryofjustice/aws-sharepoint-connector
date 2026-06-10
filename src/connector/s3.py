@@ -50,7 +50,15 @@ class S3Connector(BaseModel):
             raise UploadError(err) from exc
 
     def verify_uploaded_object(self, expected_size: int) -> None:
-        """Verify object exists in S3 and matches expected byte size."""
+        """Verify object exists in S3 and matches expected byte size.
+
+        Args:
+            expected_size (int): The expected size of the uploaded object in bytes.
+
+        Raises:
+            UploadError: If the object cannot be retrieved or the size does not match.
+
+        """
         try:
             metadata = self.client.head_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
@@ -68,3 +76,52 @@ class S3Connector(BaseModel):
                 f"got {actual_size} bytes"
             )
             raise UploadError(err)
+
+    def check_bucket_exists(self) -> None:
+        """Check that the S3 bucket exists and is accessible.
+
+        Raises:
+            UploadError: If the bucket does not exist or access is denied.
+
+        """
+        try:
+            self.client.head_bucket(Bucket=self.bucket)
+        except ClientError as exc:
+            code = exc.response["Error"]["Code"]
+            if code in ("404", "NoSuchBucket"):
+                err = f"S3 bucket does not exist: '{self.bucket}'"
+            elif code == "403":
+                err = (
+                    f"Access denied to S3 bucket '{self.bucket}': check IAM permissions"
+                )
+            else:
+                err = f"Failed to access S3 bucket '{self.bucket}': {exc}"
+            raise UploadError(err) from exc
+        except BotoCoreError as exc:
+            err = f"Failed to access S3 bucket '{self.bucket}': {exc}"
+            raise UploadError(err) from exc
+
+    def check_object_exists(self) -> None:
+        """Check that the S3 object exists and is accessible.
+
+        Raises:
+            UploadError: If the object does not exist or access is denied.
+
+        """
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=self.key)
+        except ClientError as exc:
+            code = exc.response["Error"]["Code"]
+            if code in ("404", "NoSuchKey"):
+                err = f"S3 object does not exist: s3://{self.bucket}/{self.key}"
+            elif code == "403":
+                err = (
+                    f"Access denied to S3 object s3://{self.bucket}/{self.key}: "
+                    "check IAM permissions"
+                )
+            else:
+                err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
+            raise UploadError(err) from exc
+        except BotoCoreError as exc:
+            err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
+            raise UploadError(err) from exc
