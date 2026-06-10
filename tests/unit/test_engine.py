@@ -335,3 +335,41 @@ def test_upload_to_s3_validate_plans_bucket_not_found(s3: boto3.client) -> None:
         eng = engine.UploadToS3Engine(secrets=secrets, library=library, bucket=bucket)
         with pytest.raises(UploadError, match="Pre-flight validation failed"):
             eng.validate_plans(plans)
+
+
+def test_upload_sharepoint_list_source_files(s3: boto3.client) -> None:
+    """list_source_files returns all S3 object keys from the source bucket."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = utils.make_s3_bucket()
+    utils.create_bucket(S3_BUCKET_NAME, s3)
+    s3.put_object(Bucket=S3_BUCKET_NAME, Key="path/to/file1.csv", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET_NAME, Key="path/to/file2.csv", Body=b"data")
+
+    with utils.sharepoint_connector_patches():
+        eng = engine.UploadToSharePointEngine(
+            secrets=secrets, library=library, bucket=bucket
+        )
+        result = eng.list_source_files()
+
+    assert sorted(result) == ["path/to/file1.csv", "path/to/file2.csv"]
+
+
+def test_upload_to_s3_list_source_files(s3: boto3.client) -> None:
+    """list_source_files returns all file names from the SharePoint library root."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = S3Bucket(bucket=DEST_S3_BUCKET)
+
+    with utils.sharepoint_connector_patches(
+        extra_get_side_effects=[
+            utils.mock_list_files_response(
+                file_names=["report.csv", "summary.xlsx"],
+                folder_names=["archive"],
+            )
+        ],
+    ):
+        eng = engine.UploadToS3Engine(secrets=secrets, library=library, bucket=bucket)
+        result = eng.list_source_files()
+
+    assert result == ["report.csv", "summary.xlsx"]

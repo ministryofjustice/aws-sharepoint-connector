@@ -3,7 +3,7 @@
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import requests
@@ -198,75 +198,95 @@ class SharePointConnector(BaseModel):
 
         self.download_url = f"{self.base_url}/content"
 
-    def check_file_exists(self, file_path: str) -> None:
-        """Check that a file exists in SharePoint before attempting to download it.
+    def list_files(self) -> list[str]:
+        """List files at the root of the SharePoint library.
 
-        Args:
-            file_path (str): The file path within the SharePoint library.
+        Only lists items directly under the library root, not files within
+        subfolders. Handles pagination automatically.
 
-        Raises:
-            UploadError: If the file does not exist, the path points to a folder,
-                or the check request fails.
-
-        """
-        encoded_path = quote(file_path, safe="/")
-        check_url = (
-            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
-            f"/root:/{encoded_path}:?$select=name,file"
-        )
-        try:
-            resp = request_with_retry(
-                "GET", check_url, headers=self.headers, timeout=30
-            )
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"Source file not found in SharePoint: '{file_path}'"
-                raise UploadError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "file" not in item:
-                err = f"SharePoint path '{file_path}' exists but is not a file"
-                raise UploadError(err)
-        except UploadError:
-            raise
-        except requests.RequestException as exc:
-            err = f"Failed to check SharePoint file existence for '{file_path}': {exc}"
-            raise UploadError(err) from exc
-
-    def check_folder_exists(self, folder_path: str) -> None:
-        """Check that a folder exists in SharePoint before attempting to upload into it.
-
-        Args:
-            folder_path (str): The folder path within the SharePoint library.
+        Returns:
+            list[str]: File names at the root of the library. To construct a
+                full source path for a file, join with the containing folder path.
 
         Raises:
-            UploadError: If the folder does not exist, the path points to a file,
-                or the check request fails.
+            UploadError: If the listing request fails.
 
         """
-        encoded_path = quote(folder_path, safe="/")
-        check_url = (
-            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
-            f"/root:/{encoded_path}:?$select=name,folder"
+        log.info(
+            "Listing files in SharePoint library '%s' on site '%s'...",
+            self.library.library,
+            self.library.site,
         )
+        next_url: str | None = (
+            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+            f"/root/children?$select=name,folder"
+        )
+        file_paths: list[str] = []
         try:
-            resp = request_with_retry(
-                "GET", check_url, headers=self.headers, timeout=30
-            )
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"Destination folder not found in SharePoint: '{folder_path}'"
-                raise UploadError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "folder" not in item:
-                err = f"SharePoint path '{folder_path}' exists but is not a folder"
-                raise UploadError(err)
-        except UploadError:
-            raise
+            while next_url:
+                resp = request_with_retry(
+                    "GET",
+                    next_url,
+                    headers=self.headers,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                file_paths.extend(
+                    item["name"]
+                    for item in data.get("value", [])
+                    if "folder" not in item
+                )
+                next_url = data.get("@odata.nextLink")
         except requests.RequestException as exc:
             err = (
-                f"Failed to check SharePoint folder existence for '{folder_path}':"
-                f" {exc}"
+                f"Failed to list files in SharePoint library '{self.library.library}' "
+                f"on site '{self.library.site}': {exc}"
             )
+            raise UploadError(err) from exc
+        log.info(
+            "Found %d file(s) in SharePoint library '%s' on site '%s'.",
+            len(file_paths),
+            self.library.library,
+            self.library.site,
+        )
+        return file_paths
+
+    def check_object_exists(
+        self, path: str, obj_type: Literal["file", "folder"]
+    ) -> None:
+        """Check that an object exists in SharePoint before attempting to access it.
+
+        Args:
+            path (str): The path within the SharePoint library.
+            obj_type (Literal["file", "folder"]): The expected type of the object.
+
+        Raises:
+            UploadError: If the object does not exist, the path resolves to a different
+                type, or the request fails.
+
+        """
+        encoded_path = quote(path, safe="/")
+        check_url = (
+            f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+            f"/root:/{encoded_path}:?$select=name,{obj_type}"
+        )
+        try:
+            resp = request_with_retry(
+                "GET", check_url, headers=self.headers, timeout=30
+            )
+            if resp.status_code == DOES_NOT_EXIST_CODE:
+                err = f"{obj_type.capitalize()} not found in SharePoint: '{path}'"
+                raise UploadError(err)
+            resp.raise_for_status()
+            item = resp.json()
+            if obj_type not in item:
+                err = f"SharePoint path '{path}' exists but is not a {obj_type}"
+                raise UploadError(err)
+        except UploadError:
+            raise
+        except requests.RequestException as exc:
+            err = f"Failed to check SharePoint {obj_type} existence for '{path}': {exc}"
             raise UploadError(err) from exc
 
     def fetch_file(self) -> bytes:
