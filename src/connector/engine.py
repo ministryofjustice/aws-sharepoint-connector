@@ -28,6 +28,13 @@ class Engine(ABC):
     bucket: S3Bucket
     sharepoint_connector: SharePointConnector = field(init=False)
 
+    def __post_init__(self) -> None:
+        """Post-initialization to create SharePointConnector and S3Connector."""
+        log.info("Setting up storage connectors...")
+        self.sharepoint_connector = SharePointConnector(
+            secrets=self.secrets, library=self.library
+        )
+
     @abstractmethod
     def download_file(self, source: str) -> bytes:
         """Download a file from the source storage."""
@@ -36,12 +43,10 @@ class Engine(ABC):
     def upload_file(self, content: bytes, destination: str) -> None:
         """Upload a file to the destination storage."""
 
-    def __post_init__(self) -> None:
-        """Post-initialization to create SharePointConnector and S3Connector."""
-        log.info("Setting up storage connectors...")
-        self.sharepoint_connector = SharePointConnector(
-            secrets=self.secrets, library=self.library
-        )
+    def run(self, source: str, destination: str) -> None:
+        """Run the engine to transfer a file from S3 to SharePoint."""
+        content = self.download_file(source)
+        self.upload_file(content, destination)
 
 
 class UploadToSharePointEngine(Engine):
@@ -82,11 +87,6 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
         )
-
-    def run(self, source: str, destination: str) -> None:
-        """Run the engine to transfer a file from S3 to SharePoint."""
-        content = self.download_file(source)
-        self.upload_file(content, destination)
 
 
 class UploadToS3Engine(Engine):
