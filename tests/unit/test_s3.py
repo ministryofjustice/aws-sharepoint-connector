@@ -10,25 +10,17 @@ from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from tests import test_utils as utils
 
+S3_BUCKET = utils.S3_BUCKET  # "my-source-bucket"
+S3_KEY = utils.S3_KEY  # "path/to/file1.csv"
+
 
 def test_download_from_s3_returns_file_content(s3: boto3.client) -> None:
     """Download returns the same bytes that were stored in S3."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
     expected = b"Column1,Column2\nValue1,10\nValue2,20\n"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=expected)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-    s3.put_object(
-        Bucket=plan.data_to_move[0].s3_bucket,
-        Key=plan.data_to_move[0].s3_file_key,
-        Body=expected,
-    )
-
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
     assert connector.download_from_s3() == expected
 
 
@@ -41,14 +33,9 @@ def test_download_from_s3_returns_file_content(s3: boto3.client) -> None:
 )
 def test_download_from_s3_error(s3: boto3.client, exception: Exception) -> None:
     """download_from_s3 raises UploadError with context when S3 client raises."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
+    utils.create_bucket(S3_BUCKET, s3)
 
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
 
     with (
         patch.object(s3, "get_object", side_effect=exception),
@@ -59,42 +46,28 @@ def test_download_from_s3_error(s3: boto3.client, exception: Exception) -> None:
 
 def test_upload_to_s3_writes_file_content(s3: boto3.client) -> None:
     """Upload writes bytes that can be read back from S3 unchanged."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
     data = b"name,score\nalice,100\nbob,95\n"
+    utils.create_bucket(S3_BUCKET, s3)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
     connector.upload_to_s3(data)
 
-    uploaded = s3.get_object(
-        Bucket=plan.data_to_move[0].s3_bucket, Key=plan.data_to_move[0].s3_file_key
-    )["Body"].read()
+    uploaded = s3.get_object(Bucket=S3_BUCKET, Key=S3_KEY)["Body"].read()
     assert uploaded == data
 
 
 @pytest.mark.parametrize(
     "exception",
     [
-        (BotoCoreError()),
-        (ClientError({"Error": {"Message": "S3 client error"}}, "PutObject")),
+        BotoCoreError(),
+        ClientError({"Error": {"Message": "S3 client error"}}, "PutObject"),
     ],
 )
 def test_upload_to_s3_error(s3: boto3.client, exception: Exception) -> None:
     """upload_to_s3 raises UploadError if S3 client raises an error."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
+    utils.create_bucket(S3_BUCKET, s3)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
 
     with (
         patch.object(s3, "put_object", side_effect=exception),
@@ -105,77 +78,31 @@ def test_upload_to_s3_error(s3: boto3.client, exception: Exception) -> None:
 
 def test_verify_uploaded_object_success(s3: boto3.client) -> None:
     """verify_uploaded_object completes successfully when object size matches."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
     data = b"test data"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-    s3.put_object(
-        Bucket=plan.data_to_move[0].s3_bucket,
-        Key=plan.data_to_move[0].s3_file_key,
-        Body=data,
-    )
-
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
     connector.verify_uploaded_object(expected_size=len(data))
 
 
 def test_verify_uploaded_object_size_mismatch(s3: boto3.client) -> None:
-    """verify_uploaded_object raises UploadError if object size doesn't match."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
+    """verify_uploaded_object raises UploadError if object size does not match."""
     data = b"test data"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-    s3.put_object(
-        Bucket=plan.data_to_move[0].s3_bucket,
-        Key=plan.data_to_move[0].s3_file_key,
-        Body=data,
-    )
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
 
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
-    with pytest.raises(
-        Exception,
-        match="Verification failed for uploaded S3 object",
-    ):
+    with pytest.raises(UploadError, match="Verification failed for uploaded S3 object"):
         connector.verify_uploaded_object(expected_size=len(data) + 1)
 
 
 def test_verify_uploaded_object_not_found(s3: boto3.client) -> None:
-    """verify_uploaded_object raises UploadError if object is not found in S3."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
+    """verify_uploaded_object raises UploadError if the object does not exist."""
+    utils.create_bucket(S3_BUCKET, s3)
 
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
 
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
-    with pytest.raises(Exception, match="Failed to verify uploaded S3 object"):
-        connector.verify_uploaded_object(expected_size=10)
-
-
-def test_verify_uploaded_object_s3_error(s3: boto3.client) -> None:
-    """verify_uploaded_object raises UploadError if S3 client raises an error."""
-    _, plan = utils.create_sp_to_s3_movement_plan()
-
-    utils.create_bucket(plan.data_to_move[0].s3_bucket, s3)
-
-    connector = S3Connector(
-        client=s3,
-        bucket=plan.data_to_move[0].s3_bucket,
-        key=plan.data_to_move[0].s3_file_key,
-    )
-
-    with pytest.raises(Exception, match="Failed to verify uploaded S3 object"):
+    with pytest.raises(UploadError, match="Failed to verify uploaded S3 object"):
         connector.verify_uploaded_object(expected_size=10)
