@@ -170,3 +170,61 @@ def test_check_object_exists_access_denied(s3: boto3.client) -> None:
         pytest.raises(UploadError, match="Access denied"),
     ):
         connector.check_object_exists()
+
+
+def test_check_bucket_exists_generic_client_error(s3: boto3.client) -> None:
+    """check_bucket_exists raises UploadError with generic message for unknown codes."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key="")
+    with (
+        patch.object(
+            s3,
+            "head_bucket",
+            side_effect=ClientError(
+                {"Error": {"Code": "500", "Message": "Internal Server Error"}},
+                "HeadBucket",
+            ),
+        ),
+        pytest.raises(UploadError, match="Failed to access S3 bucket"),
+    ):
+        connector.check_bucket_exists()
+
+
+def test_check_bucket_exists_botocore_error(s3: boto3.client) -> None:
+    """check_bucket_exists raises UploadError when a BotoCoreError occurs."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key="")
+    with (
+        patch.object(s3, "head_bucket", side_effect=BotoCoreError()),
+        pytest.raises(UploadError, match="Failed to access S3 bucket"),
+    ):
+        connector.check_bucket_exists()
+
+
+def test_check_object_exists_generic_client_error(s3: boto3.client) -> None:
+    """check_object_exists raises UploadError with generic message for unknown codes."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
+    with (
+        patch.object(
+            s3,
+            "head_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "500", "Message": "Internal Server Error"}},
+                "HeadObject",
+            ),
+        ),
+        pytest.raises(UploadError, match="Failed to access S3 object"),
+    ):
+        connector.check_object_exists()
+
+
+def test_check_object_exists_botocore_error(s3: boto3.client) -> None:
+    """check_object_exists raises UploadError when a BotoCoreError occurs."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
+    with (
+        patch.object(s3, "head_object", side_effect=BotoCoreError()),
+        pytest.raises(UploadError, match="Failed to access S3 object"),
+    ):
+        connector.check_object_exists()

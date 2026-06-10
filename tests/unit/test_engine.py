@@ -267,6 +267,22 @@ def test_upload_sharepoint_validate_plans_collects_all_errors(s3: boto3.client) 
             eng.validate_plans(plans)
 
 
+def test_upload_sharepoint_validate_plans_bucket_not_found(s3: boto3.client) -> None:
+    """validate_plans raises UploadError when the S3 source bucket does not exist."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = utils.make_s3_bucket()
+
+    plans = [MovementPlan(source=S3_KEY, destination="file.csv")]
+
+    with utils.sharepoint_connector_patches():
+        eng = engine.UploadToSharePointEngine(
+            secrets=secrets, library=library, bucket=bucket
+        )
+        with pytest.raises(UploadError, match="Pre-flight validation failed"):
+            eng.validate_plans(plans)
+
+
 def test_upload_to_s3_validate_plans_success(s3: boto3.client) -> None:
     """validate_plans passes when S3 bucket is accessible and SharePoint file exists."""
     secrets = SecretConfig()  # type: ignore[call-arg]
