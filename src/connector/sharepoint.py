@@ -218,19 +218,18 @@ class SharePointConnector(BaseModel):
             resp = request_with_retry(
                 "GET", check_url, headers=self.headers, timeout=30
             )
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"Source file not found in SharePoint: '{file_path}'"
-                raise UploadError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "file" not in item:
-                err = f"SharePoint path '{file_path}' exists but is not a file"
-                raise UploadError(err)
-        except UploadError:
-            raise
         except requests.RequestException as exc:
             err = f"Failed to check SharePoint file existence for '{file_path}': {exc}"
             raise UploadError(err) from exc
+
+        if resp.status_code == DOES_NOT_EXIST_CODE:
+            err = f"Source file not found in SharePoint: '{file_path}'"
+            raise UploadError(err)
+        resp.raise_for_status()
+        item = resp.json()
+        if "file" not in item:
+            err = f"SharePoint path '{file_path}' exists but is not a file"
+            raise UploadError(err)
 
     def check_folder_exists(self, folder_path: str) -> None:
         """Check that a folder exists in SharePoint before attempting to upload into it.
@@ -252,22 +251,21 @@ class SharePointConnector(BaseModel):
             resp = request_with_retry(
                 "GET", check_url, headers=self.headers, timeout=30
             )
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"Destination folder not found in SharePoint: '{folder_path}'"
-                raise UploadError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "folder" not in item:
-                err = f"SharePoint path '{folder_path}' exists but is not a folder"
-                raise UploadError(err)
-        except UploadError:
-            raise
         except requests.RequestException as exc:
             err = (
-                f"Failed to check SharePoint folder existence for '{folder_path}':"
-                f" {exc}"
+                f"Failed to check SharePoint folder existence"
+                f" for '{folder_path}': {exc}"
             )
             raise UploadError(err) from exc
+
+        if resp.status_code == DOES_NOT_EXIST_CODE:
+            err = f"Destination folder not found in SharePoint: '{folder_path}'"
+            raise UploadError(err)
+        resp.raise_for_status()
+        item = resp.json()
+        if "folder" not in item:
+            err = f"SharePoint path '{folder_path}' exists but is not a folder"
+            raise UploadError(err)
 
     def fetch_file(self) -> bytes:
         """Fetch a file from SharePoint.
@@ -289,16 +287,15 @@ class SharePointConnector(BaseModel):
                 headers=self.headers,
                 timeout=30,
             )
-            if file_resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"File not found in SharePoint: '{self.file_path}'"
-                raise UploadError(err)
-
-            file_resp.raise_for_status()
-            return file_resp.content  # noqa: TRY300
-
         except requests.RequestException as exc:
             err = f"Failed to fetch file from SharePoint: {exc}"
             raise UploadError(err) from exc
+
+        if file_resp.status_code == DOES_NOT_EXIST_CODE:
+            err = f"File not found in SharePoint: '{self.file_path}'"
+            raise UploadError(err)
+        file_resp.raise_for_status()
+        return file_resp.content
 
     def verify_uploaded_file(self, expected_size: int) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
@@ -316,28 +313,28 @@ class SharePointConnector(BaseModel):
             resp = request_with_retry(
                 "GET", verify_url, headers=self.headers, timeout=30
             )
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = (
-                    f"Verification failed: file '{expected_name}'"
-                    " not found in SharePoint."
-                )
-                raise UploadError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "file" not in item or item.get("size") != expected_size:
-                err = (
-                    f"Verification failed: file '{expected_name}' not found with size "
-                    f"{expected_size} bytes."
-                )
-                raise UploadError(err)
-            log.info(
-                "Verified uploaded file '%s' (%s bytes)",
-                expected_name,
-                expected_size,
-            )
         except requests.RequestException as exc:
             err = f"Failed to verify uploaded file: {exc}"
             raise UploadError(err) from exc
+
+        if resp.status_code == DOES_NOT_EXIST_CODE:
+            err = (
+                f"Verification failed: file '{expected_name}' not found in SharePoint."
+            )
+            raise UploadError(err)
+        resp.raise_for_status()
+        item = resp.json()
+        if "file" not in item or item.get("size") != expected_size:
+            err = (
+                f"Verification failed: file '{expected_name}' not found with size "
+                f"{expected_size} bytes."
+            )
+            raise UploadError(err)
+        log.info(
+            "Verified uploaded file '%s' (%s bytes)",
+            expected_name,
+            expected_size,
+        )
 
     def get_next_start(self, session: requests.Session) -> int:
         """Get the next starting byte position for uploading a chunk.
