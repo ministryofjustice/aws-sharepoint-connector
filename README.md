@@ -24,6 +24,7 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 - [How to run](#how-to-run)
 	- [Programmatic API](#programmatic-api)
 - [Error handling and retries](#error-handling-and-retries)
+	- [Pre-flight Validation](#pre-flight-validation)
 - [How to modify or extend](#how-to-modify-or-extend)
 - [Troubleshooting](#troubleshooting)
 - [Security considerations](#security-considerations)
@@ -36,11 +37,15 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 
 1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)` — authenticates to Azure Graph API at this point.
 2. Define movement plans with `create_movement_plan([{"source": ..., "destination": ...}])`, returning a list of `MovementPlan` objects.
-3. For each `MovementPlan`, call `engine.run(plan.source, plan.destination)`:
+3. Call `engine.validate_plans(plans)` to run pre-flight checks on **all** plans before any transfers begin:
+	- **`write_to_sharepoint`**: verifies the S3 bucket is accessible, each source S3 key exists, and each destination SharePoint parent folder exists.
+	- **`write_to_s3`**: verifies the S3 bucket is accessible and each source SharePoint file exists.
+	- All failures are collected and reported together in a single `UploadError`, so the full set of problems is visible before anything is moved.
+4. For each `MovementPlan`, call `engine.run(plan.source, plan.destination)`:
 	- Download from the source system (SharePoint or S3).
 	- Upload to the destination system (S3 or SharePoint).
 	- Verify the destination file exists with matching byte size.
-4. Handle errors per file in your calling code.
+5. Handle errors per file in your calling code.
 
 ### Transfer Modes
 
@@ -125,6 +130,7 @@ plans = create_movement_plan([
         "destination": "path/to/daily_report.csv",
     }
 ])
+engine.validate_plans(plans)
 for plan in plans:
     engine.run(plan.source, plan.destination)
 ```
@@ -146,6 +152,7 @@ plans = create_movement_plan([
         "destination": "reports/2026/daily_report.csv",
     }
 ])
+engine.validate_plans(plans)
 for plan in plans:
     engine.run(plan.source, plan.destination)
 ```
@@ -236,6 +243,10 @@ plans = create_movement_plan([
     },
 ])
 
+# Pre-flight: verify all sources and destinations exist before transferring anything.
+# Raises UploadError listing every problem if any check fails.
+engine.validate_plans(plans)
+
 for plan in plans:
     engine.run(plan.source, plan.destination)
 ```
@@ -243,6 +254,23 @@ for plan in plans:
 ## Error handling and retries
 
 The connector implements robust retry logic to handle transient failures.
+
+### Pre-flight Validation
+
+Before transferring any files, call `engine.validate_plans(plans)` to check that all sources and destinations are reachable. All checks run before any error is raised, so you see the complete list of problems in one go:
+
+```python
+try:
+    engine.validate_plans(plans)
+except UploadError as exc:
+    # exc contains every validation failure, e.g.:
+    # Pre-flight validation failed with 2 error(s):
+    #   - S3 object does not exist: s3://my-bucket/missing/file.csv
+    #   - Destination folder not found in SharePoint: 'reports/2025'
+    raise
+```
+
+This prevents partial transfers where some files succeed and others fail due to a misconfiguration that could have been detected upfront.
 
 ### Chunk Upload Strategy
 
@@ -275,9 +303,10 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 1. Create a new engine class in `src/connector/engine.py` implementing:
 	 - `download_file(self, source: str) -> bytes`
 	 - `upload_file(self, content: bytes, destination: str) -> None`
+	 - `validate_plans(self, plans: list[MovementPlan]) -> None`
 2. Register the engine in `MODE_MAP` in `src/connector/main.py`.
 3. Expand the `Literal` type for `mode` in `create_engine()` in `src/connector/main.py`.
-4. Add unit tests for success and failure paths.
+4. Add unit tests for success and failure paths, including `validate_plans`.
 
 ### 2) Add additional configuration
 
@@ -291,11 +320,13 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 
 ### Common errors and solutions
 
+- **`Pre-flight validation failed with N error(s)`**: One or more sources or destinations could not be verified before transfers started. The error message lists every problem — fix all of them before retrying.
 - **`Library 'X' not found on site`**: Verify `sp_library` spelling and that the app has SharePoint access via Graph API permissions (`Sites.Read.All`, `Files.ReadWrite.All`)
-- **`File not found in SharePoint`**: Verify the file exists at the exact path supplied as `source`; check case sensitivity
-- **`S3 NoSuchBucket` or `NoSuchKey`**: Verify bucket name is correct, bucket exists in eu-west-2, and IAM principal has access
-- **`AccessDenied` (S3)**: Check IAM policy grants s3:GetObject/PutObject/HeadObject on the bucket
-- **`AADSTS65001` or Graph auth failures**: Verify app permissions (Sites.Read.All, Files.ReadWrite.All) are granted in Azure; may need admin consent
+- **`Source file not found in SharePoint`**: Verify the file exists at the exact path supplied as `source`; check case sensitivity
+- **`Destination folder not found in SharePoint`**: The parent directory of the destination path does not exist in SharePoint; create it before running the connector
+- **`S3 bucket does not exist`** or **`S3 object does not exist`**: Verify bucket name is correct, bucket exists in eu-west-2, and IAM principal has access
+- **`Access denied to S3 bucket/object`**: Check IAM policy grants `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, and `s3:HeadBucket` on the bucket
+- **`AADSTS65001` or Graph auth failures**: Verify app permissions (`Sites.Read.All`, `Files.ReadWrite.All`) are granted in Azure; may need admin consent
 - **`File transfer failed: Max retries exceeded`**: File chunk upload exceeded 5 consecutive failures; check network stability, S3/SharePoint availability, and file size
 
 ## Security considerations

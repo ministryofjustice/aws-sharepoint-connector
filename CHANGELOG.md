@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pre-flight validation via `engine.validate_plans(plans)` — must be called before iterating `engine.run()`. Checks all sources and destinations exist before any transfers begin, collecting every error into a single `UploadError` report so callers see the full picture at once.
+  - `write_to_sharepoint` mode: verifies S3 bucket is accessible, each source S3 key exists, and each destination SharePoint parent folder exists.
+  - `write_to_s3` mode: verifies S3 bucket is accessible and each source SharePoint file exists.
+- `S3Connector.check_bucket_exists()` — raises `UploadError` with a descriptive message distinguishing "does not exist" (404) from "access denied" (403).
+- `S3Connector.check_object_exists()` — same error-classification pattern for individual S3 keys.
+- `SharePointConnector.check_file_exists(path)` — confirms a path in the SharePoint library is a file (not a folder or absent).
+- `SharePointConnector.check_folder_exists(path)` — confirms a path in the SharePoint library is a folder (not a file or absent).
+
 ### Changed
 
 - Replaced `run()` / `DATA_MOVEMENT_PLAN` env-var API with explicit factory functions:
@@ -17,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `DataMovementPlan`, `SharePointFile`, `S3File`, `S3ToSPMovementPlan`, `SPToS3MovementPlan` config models
 - `SharePointConnector` no longer holds a file path at construction time; path is set per transfer via `update_with_file_path()`
 - Removed `ensure_destination_folder` from `SharePointConnector`
+- `mode` is now validated before secrets are loaded in `create_engine()`, so an invalid mode raises a clear `ValueError` immediately rather than a misleading secrets-missing error
+- `s3_client` is created once at engine initialisation and reused for all transfers in that session (previously a new client was created for every download and upload call)
+- `NoLibraryError` raised by `auth.get_drive_id` is now properly caught and re-raised as `UploadError` in `SharePointConnector.set_drive_id`, with a descriptive message including the site and library name
+- Improved log messages throughout: transfer start/complete messages now include source path, destination path, and byte count
 
 ## [1.0.0] - 2026-05-14
 
