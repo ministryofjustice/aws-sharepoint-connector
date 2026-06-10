@@ -437,3 +437,128 @@ def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
         connector.set_upload_url()
         with pytest.raises(UploadError, match="retries"):
             connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
+
+
+def test_verify_uploaded_file_request_error() -> None:
+    """Test that verify_uploaded_file raises UploadError on RequestException."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(UploadError, match="Failed to verify uploaded file"),
+    ):
+        connector.verify_uploaded_file(expected_size=12)
+
+
+def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -> None:
+    """Test chunk upload resumes from server-reported position after Exception."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    payload = b"0123456789abcdef"  # 16 bytes
+    file_size = len(payload)
+    resume_pos = 5
+
+    with (
+        utils.sharepoint_connector_patches(
+            extra_post_side_effects=[utils.mock_upload_url_response()],
+            extra_get_side_effects=[
+                utils.mock_verify_uploaded_file_response(200, SP_FILE_NAME, file_size),
+            ],
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.get",
+            side_effect=[
+                utils.mock_get_next_start_response(0, file_size),
+                utils.mock_get_next_start_response(resume_pos, file_size),
+            ],
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.put",
+            side_effect=[
+                requests.exceptions.RequestException("network error"),
+                utils.mock_session_put_response(200),
+            ],
+        ) as mock_put,
+    ):
+        connector = make_connector(secrets)
+        connector.update_with_file_path(SP_FILE_PATH)
+        connector.set_upload_url()
+        connector.upload_stream_in_chunks(BytesIO(payload), file_size)
+
+    assert mock_put.call_count == 2
+    # Second put starts from resume_pos, so only the remaining bytes are sent
+    assert len(mock_put.call_args_list[1][1]["data"]) == file_size - resume_pos
+
+
+def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> None:
+    """Test that a 5xx response exceeding MAX_CHUNK_RETRIES raises UploadError."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    payload = b"chunk-content"
+    file_size = len(payload)
+    # MAX_CHUNK_RETRIES=5: 6 puts all fail; 6 Session.get calls (1 initial + 5 resumes)
+    session_get_responses = [utils.mock_get_next_start_response(0, file_size)] * 6
+    session_put_responses = [utils.mock_session_put_response(503)] * 6
+
+    with (
+        utils.sharepoint_connector_patches(
+            extra_post_side_effects=[utils.mock_upload_url_response()],
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.get",
+            side_effect=session_get_responses,
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.put",
+            side_effect=session_put_responses,
+        ),
+    ):
+        connector = make_connector(secrets)
+        connector.update_with_file_path(SP_FILE_PATH)
+        connector.set_upload_url()
+        with pytest.raises(UploadError, match="retries"):
+            connector.upload_stream_in_chunks(BytesIO(payload), file_size)
+
+
+def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> None:
+    """Test chunk upload resumes from server-reported position after a 5xx response."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    payload = b"0123456789abcdef"  # 16 bytes
+    file_size = len(payload)
+    resume_pos = 5
+
+    with (
+        utils.sharepoint_connector_patches(
+            extra_post_side_effects=[utils.mock_upload_url_response()],
+            extra_get_side_effects=[
+                utils.mock_verify_uploaded_file_response(200, SP_FILE_NAME, file_size),
+            ],
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.get",
+            side_effect=[
+                utils.mock_get_next_start_response(0, file_size),
+                utils.mock_get_next_start_response(resume_pos, file_size),
+            ],
+        ),
+        patch(
+            "connector.sharepoint.requests.Session.put",
+            side_effect=[
+                utils.mock_session_put_response(503),
+                utils.mock_session_put_response(200),
+            ],
+        ) as mock_put,
+    ):
+        connector = make_connector(secrets)
+        connector.update_with_file_path(SP_FILE_PATH)
+        connector.set_upload_url()
+        connector.upload_stream_in_chunks(BytesIO(payload), file_size)
+
+    assert mock_put.call_count == 2
+    assert len(mock_put.call_args_list[1][1]["data"]) == file_size - resume_pos
