@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from connector.config import SecretConfig, SharePointLibrary
-from connector.exceptions import UploadError
+from connector.exceptions import NoLibraryError, UploadError
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -562,3 +562,129 @@ def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> 
 
     assert mock_put.call_count == 2
     assert len(mock_put.call_args_list[1][1]["data"]) == file_size - resume_pos
+
+
+def test_set_drive_id_no_library_error() -> None:
+    """Test that set_drive_id wraps NoLibraryError from auth.get_drive_id."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with (
+        utils.sharepoint_connector_patches(),
+        patch(
+            "connector.auth.get_drive_id",
+            side_effect=NoLibraryError("Library 'Documents' not found on site 'x'"),
+        ),
+        pytest.raises(UploadError, match="Could not connect to SharePoint library"),
+    ):
+        make_connector(secrets)
+
+
+def test_check_file_exists_success() -> None:
+    """Test that check_file_exists completes without raising when file is present."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches(
+        extra_get_side_effects=[utils.mock_check_file_response(200, SP_FILE_NAME)],
+    ):
+        connector = make_connector(secrets)
+        connector.check_file_exists(SP_FILE_PATH)  # should not raise
+
+
+def test_check_file_exists_not_found() -> None:
+    """Test that check_file_exists raises UploadError when the file is absent."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with (
+        utils.sharepoint_connector_patches(
+            extra_get_side_effects=[utils.build_response(status_code=404)],
+        ),
+    ):
+        connector = make_connector(secrets)
+        with pytest.raises(UploadError, match="Source file not found in SharePoint"):
+            connector.check_file_exists(SP_FILE_PATH)
+
+
+def test_check_file_exists_path_is_folder() -> None:
+    """Test that check_file_exists raises UploadError when the path is a folder."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    folder_as_file_response = utils.build_response(
+        status_code=200,
+        json_body={"name": "reports", "folder": {"childCount": 2}},
+    )
+    with (
+        utils.sharepoint_connector_patches(
+            extra_get_side_effects=[folder_as_file_response],
+        ),
+    ):
+        connector = make_connector(secrets)
+        with pytest.raises(UploadError, match="is not a file"):
+            connector.check_file_exists(SP_FILE_PATH)
+
+
+def test_check_file_exists_request_error() -> None:
+    """Test that check_file_exists raises UploadError on a network error."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(UploadError, match="Failed to check SharePoint file existence"),
+    ):
+        connector.check_file_exists(SP_FILE_PATH)
+
+
+def test_check_folder_exists_success() -> None:
+    """Test that check_folder_exists completes when folder is present."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches(
+        extra_get_side_effects=[utils.mock_check_folder_response(200, "2026")],
+    ):
+        connector = make_connector(secrets)
+        connector.check_folder_exists("reports/2026")  # should not raise
+
+
+def test_check_folder_exists_not_found() -> None:
+    """Test that check_folder_exists raises UploadError when the folder is absent."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with (
+        utils.sharepoint_connector_patches(
+            extra_get_side_effects=[utils.build_response(status_code=404)],
+        ),
+    ):
+        connector = make_connector(secrets)
+        with pytest.raises(
+            UploadError, match="Destination folder not found in SharePoint"
+        ):
+            connector.check_folder_exists("reports/2026")
+
+
+def test_check_folder_exists_path_is_file() -> None:
+    """Test that check_folder_exists raises UploadError when the path is a file."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    file_as_folder_response = utils.build_response(
+        status_code=200,
+        json_body={"name": "daily_report.csv", "file": {}},
+    )
+    with (
+        utils.sharepoint_connector_patches(
+            extra_get_side_effects=[file_as_folder_response],
+        ),
+    ):
+        connector = make_connector(secrets)
+        with pytest.raises(UploadError, match="is not a folder"):
+            connector.check_folder_exists("reports/2026")
+
+
+def test_check_folder_exists_request_error() -> None:
+    """Test that check_folder_exists raises UploadError on a network error."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(UploadError, match="Failed to check SharePoint folder existence"),
+    ):
+        connector.check_folder_exists("reports/2026")

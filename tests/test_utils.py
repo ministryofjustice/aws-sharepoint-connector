@@ -125,6 +125,22 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
     return build_response(json_body={"nextExpectedRanges": [f"{start}-{end}"]})
 
 
+def mock_check_file_response(status_code: int, file_name: str) -> Response:
+    """Mock response for check_file_exists — returns a file item metadata response."""
+    return build_response(
+        json_body={"name": file_name, "file": {}},
+        status_code=status_code,
+    )
+
+
+def mock_check_folder_response(status_code: int, folder_name: str) -> Response:
+    """Mock response for check_folder_exists — returns a folder metadata response."""
+    return build_response(
+        json_body={"name": folder_name, "folder": {"childCount": 0}},
+        status_code=status_code,
+    )
+
+
 @contextmanager
 def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,

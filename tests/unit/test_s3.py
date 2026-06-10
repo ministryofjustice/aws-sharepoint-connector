@@ -106,3 +106,67 @@ def test_verify_uploaded_object_not_found(s3: boto3.client) -> None:
 
     with pytest.raises(UploadError, match="Failed to verify uploaded S3 object"):
         connector.verify_uploaded_object(expected_size=10)
+
+
+def test_check_bucket_exists_success(s3: boto3.client) -> None:
+    """check_bucket_exists does not raise when the bucket is accessible."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key="")
+    connector.check_bucket_exists()  # should not raise
+
+
+def test_check_bucket_exists_not_found(s3: boto3.client) -> None:
+    """check_bucket_exists raises UploadError when the bucket does not exist."""
+    connector = S3Connector(client=s3, bucket="non-existent-bucket", key="")
+    with pytest.raises(UploadError, match="does not exist"):
+        connector.check_bucket_exists()
+
+
+def test_check_bucket_exists_access_denied(s3: boto3.client) -> None:
+    """check_bucket_exists raises UploadError with an IAM hint on a 403 response."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key="")
+    with (
+        patch.object(
+            s3,
+            "head_bucket",
+            side_effect=ClientError(
+                {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadBucket"
+            ),
+        ),
+        pytest.raises(UploadError, match="Access denied"),
+    ):
+        connector.check_bucket_exists()
+
+
+def test_check_object_exists_success(s3: boto3.client) -> None:
+    """check_object_exists does not raise when the object is accessible."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=b"data")
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
+    connector.check_object_exists()  # should not raise
+
+
+def test_check_object_exists_not_found(s3: boto3.client) -> None:
+    """check_object_exists raises UploadError when the object does not exist."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key="missing/key.csv")
+    with pytest.raises(UploadError, match="does not exist"):
+        connector.check_object_exists()
+
+
+def test_check_object_exists_access_denied(s3: boto3.client) -> None:
+    """check_object_exists raises UploadError with an IAM hint on a 403 response."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET, key=S3_KEY)
+    with (
+        patch.object(
+            s3,
+            "head_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadObject"
+            ),
+        ),
+        pytest.raises(UploadError, match="Access denied"),
+    ):
+        connector.check_object_exists()
