@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Replaced `run()` / `DATA_MOVEMENT_PLAN` env-var API with explicit factory functions:
+  `create_engine(mode, sp_site, sp_library, s3_bucket)` and
+  `create_movement_plan([{"source": str, "destination": str}])`
+- Engine is created once per run and reused across all file transfers via `engine.run(source, destination)`
+- `MovementPlan` now holds plain `source` / `destination` strings instead of nested typed objects
+- Removed `DataMovementPlan`, `SharePointFile`, `S3File`, `S3ToSPMovementPlan`, `SPToS3MovementPlan` config models
+- `SharePointConnector` no longer holds a file path at construction time; path is set per transfer via `update_with_file_path()`
+- Removed `ensure_destination_folder` from `SharePointConnector`
+
 ## [1.0.0] - 2026-05-14
 
 ### Added

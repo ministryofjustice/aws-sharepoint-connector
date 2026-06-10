@@ -44,7 +44,7 @@ class Engine(ABC):
         """Upload a file to the destination storage."""
 
     def run(self, source: str, destination: str) -> None:
-        """Run the engine to transfer a file from S3 to SharePoint."""
+        """Transfer a single file from source to destination storage."""
         content = self.download_file(source)
         self.upload_file(content, destination)
 

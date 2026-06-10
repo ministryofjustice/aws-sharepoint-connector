@@ -8,17 +8,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SharePointLibrary(BaseSettings):
-    """BaseModel for defining a SharePoint library.
+    """Configuration for a SharePoint document library.
 
     Attributes:
-        site (str): The source/target Sharepoint site name
-        library (str): The source/target document library name
+        site (str): The source/target SharePoint site name (without URL prefix).
+        library (str): The source/target document library name.
 
-    Example:
-    `https://justiceuk.sharepoint.com/sites/analytics-site/Documents/exports/reports/2026/04/daily_report.csv'
+    Example::
 
-    - site = 'analytics-site'
-    - library = 'Documents'
+        # For a file at:
+        # https://justiceuk.sharepoint.com/sites/analytics-site/Documents/...
+        SharePointLibrary(site='analytics-site', library='Documents')
 
     """
 
@@ -64,15 +64,16 @@ class SharePointLibrary(BaseSettings):
 
 
 class S3Bucket(BaseSettings):
-    """BaseModel for defining an s3 file.
+    """Configuration for an S3 bucket.
 
     Attributes:
-        bucket (str): The source/target s3 bucket. Do not include the "s3://" prefix.
+        bucket (str): The source/target S3 bucket name. Do not include the
+            ``s3://`` prefix or a trailing slash.
 
-    Example:
-    s3://my-bucket/path/to/file1.csv
+    Example::
 
-    - bucket = 'my-bucket'
+        # For s3://my-bucket/path/to/file1.csv
+        S3Bucket(bucket='my-bucket')
 
     """
 

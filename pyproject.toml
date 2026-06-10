@@ -42,9 +42,6 @@ package = true
 [tool.setuptools.packages.find]
 where = ["src", "."]
 
-[project.scripts]
-connector = "connector.main:run"
-
 [tool.mypy]
 strict = true
 disallow_untyped_defs = true

@@ -27,29 +27,29 @@ def create_engine(
     sp_library: str,
     s3_bucket: str,
 ) -> UploadToSharePointEngine | UploadToS3Engine:
-    """Create an engine instance based on the mode.
+    """Create an engine instance for transferring files between S3 and SharePoint.
+
+    Authenticates to Azure Graph API and validates all configuration at construction
+    time. The returned engine can then be used to transfer individual files via
+    ``engine.run(source, destination)``.
 
     Args:
-        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): The mode of
-            operation determining the type of engine to create.
-        sp_site (str | None): SharePoint site name
-        sp_library (str | None): SharePoint library name
-        s3_bucket (str | None): S3 bucket name
-
-    For a SharePoint file located at:
-    `https://justiceuk.sharepoint.com/sites/analytics-site/Documents/exports/reports/2026/04/daily_report.csv`
-    - sp_site = 'analytics-site'
-    - sp_library = 'Documents'
-
-    If no arguments are provided, the function will attempt to read values from
-    the environment variables "MODE", "SP_LIBRARY", "SP_SITE", and "S3_BUCKET".
+        mode (Literal["write_to_s3", "write_to_sharepoint"]): Transfer direction.
+            ``write_to_s3`` downloads from SharePoint and uploads to S3;
+            ``write_to_sharepoint`` downloads from S3 and uploads to SharePoint.
+        sp_site (str): SharePoint site name (without the full URL prefix).
+            For a file at ``https://justiceuk.sharepoint.com/sites/analytics-site/...``
+            use ``sp_site='analytics-site'``.
+        sp_library (str): Name of SharePoint document library (e.g. ``'Documents'``).
+        s3_bucket (str): S3 bucket name without the ``s3://`` prefix.
 
     Returns:
-        tuple[type[UploadToSharePointEngine | UploadToS3Engine], SecretConfig]:
-            A tuple containing the engine class and the secrets configuration.
+        UploadToSharePointEngine | UploadToS3Engine:
+            A configured engine instance ready to run file transfers.
 
     Raises:
-        ValueError: If an invalid mode is provided.
+        ValueError: If ``mode`` is not one of the valid transfer directions.
+        ValidationError: If any configuration value fails Pydantic validation.
 
     """
     secrets = SecretConfig()  # type: ignore[call-arg]
@@ -69,23 +69,25 @@ def create_engine(
 def create_movement_plan(
     data_movement_plan: list[MovementPlanDict],
 ) -> list[MovementPlan]:
-    """Create a DataMovementPlan from a list of movement plan dictionaries.
+    """Convert a list of movement plan dicts into validated ``MovementPlan`` objects.
+
+    Each dict must contain ``source`` and ``destination`` string keys. In
+    ``write_to_s3`` mode, ``source`` is a SharePoint file path and ``destination``
+    is an S3 key. In ``write_to_sharepoint`` mode the roles are reversed.
 
     Args:
         data_movement_plan (list[MovementPlanDict]):
-            A list of dictionaries representing the movement plans to be validated and
-            converted into a DataMovementPlan instance.
+            A list of ``{"source": str, "destination": str}`` dicts describing
+            the files to transfer.
 
     Returns:
         list[MovementPlan]:
-            A list of validated movement plans.
+            A list of validated ``MovementPlan`` instances.
 
     Raises:
-        ValueError: If an invalid mode is provided or if the movement plans are not
-            valid according to the specified mode.
+        ValidationError: If any dict is missing required fields.
 
-    Example movement plan:
-    ----------------------
+    Example::
 
     ```
     data_movement_plan=[

@@ -98,8 +98,8 @@ class SharePointConnector(BaseModel):
             headers (dict[str, str]): The headers to use for the request..
 
         Raises:
-            UploadError: If the drive ID cannot be retrieved due to an HTTP error or if
-                the specified library is not found on the site.
+            UploadError: If the drive ID cannot be retrieved due to an HTTP error
+                or if the specified library is not found on the site.
 
         """
         log.info(
