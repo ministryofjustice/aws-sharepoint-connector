@@ -287,7 +287,7 @@ def test_verify_uploaded_file_success(
     """Test that verify_uploaded_file succeeds when the uploaded file is present."""
     secrets = SecretConfig()  # type: ignore[call-arg]
     expected_size = 13
-    file_name = file_path.split("/")[-1]
+    file_name = file_path.rsplit("/", maxsplit=1)[-1]
 
     with utils.sharepoint_connector_patches():
         connector = make_connector(secrets)
