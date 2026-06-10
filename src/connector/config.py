@@ -140,5 +140,5 @@ class MovementPlan(BaseModel):
 class MovementPlanDict(TypedDict):
     """TypedDict for defining the structure of a movement plan from SharePoint to S3."""
 
-    source: dict[str, str]
-    destination: dict[str, str]
+    source: str
+    destination: str
