@@ -1,234 +1,185 @@
-"""Unit tests for the run() function of the connector application."""
+"""Unit tests for create_engine() and create_movement_plan() in main.py."""
 
-import json
 from collections.abc import Generator
-from contextlib import contextmanager
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from connector import engine as engine_module
-from connector.config import SecretConfig
-from connector.exceptions import UploadError
-from connector.main import run
-from tests.test_utils import (
-    create_s3_to_sp_movement_plan,
-    create_sp_to_s3_movement_plan,
-)
-
-
-@contextmanager  # pylint: disable=too-many-arguments
-def mock_all_engines(  # noqa: PLR0913
-    s3_dl_return: bytes | None = b"data",
-    s3_dl_side_effect: Exception | None = None,
-    s3_ul_side_effect: Exception | None = None,
-    sp_dl_return: bytes | None = b"data",
-    sp_dl_side_effect: Exception | None = None,
-    sp_ul_side_effect: Exception | None = None,
-) -> Generator[tuple[Mock, Mock, Mock, Mock]]:
-    """Patch all engine methods with optional overrides for return/side effects."""
-    with (
-        patch(
-            "connector.engine.UploadToS3Engine.download_file",
-            autospec=True,
-            return_value=s3_dl_return,
-            side_effect=s3_dl_side_effect,
-        ) as s3_dl,
-        patch(
-            "connector.engine.UploadToS3Engine.upload_file",
-            autospec=True,
-            side_effect=s3_ul_side_effect,
-        ) as s3_ul,
-        patch(
-            "connector.engine.UploadToSharePointEngine.download_file",
-            autospec=True,
-            return_value=sp_dl_return,
-            side_effect=sp_dl_side_effect,
-        ) as sp_dl,
-        patch(
-            "connector.engine.UploadToSharePointEngine.upload_file",
-            autospec=True,
-            side_effect=sp_ul_side_effect,
-        ) as sp_ul,
-    ):
-        yield (s3_dl, s3_ul, sp_dl, sp_ul)
+from connector.config import MovementPlan, SecretConfig
+from connector.main import create_engine, create_movement_plan
 
 
 @pytest.fixture(autouse=True)
 def suppress_engine_init() -> Generator[None]:
-    """Prevent Engine.__post_init__ from running real connector setup in all tests."""
+    """Prevent Engine.__post_init__ from making real API calls in all tests."""
     with patch("connector.engine.Engine.__post_init__"):
         yield
 
 
-class TestRunWriteToS3:
-    """A/B: run() called with mode='write_to_s3' and data_movement_plan as args."""
+class TestCreateEngine:
+    """Tests for the create_engine() factory function."""
 
-    def test_s3_engine_called_not_sharepoint(self) -> None:
-        """Test that UploadToS3Engine is used and SharePointEngine is never called."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
+    def test_write_to_s3_returns_upload_to_s3_engine(self) -> None:
+        """Test that write_to_s3 mode returns an UploadToS3Engine."""
+        eng = create_engine("write_to_s3", "analytics-site", "Documents", "my-bucket")
+        assert isinstance(eng, engine_module.UploadToS3Engine)
 
-        with mock_all_engines() as (s3_dl, s3_ul, sp_dl, sp_ul):
-            run(mode="write_to_s3", data_movement_plan=plans_dicts)
+    def test_write_to_sharepoint_returns_upload_to_sharepoint_engine(self) -> None:
+        """Test that write_to_sharepoint mode returns an UploadToSharePointEngine."""
+        eng = create_engine(
+            "write_to_sharepoint", "analytics-site", "Documents", "my-bucket"
+        )
+        assert isinstance(eng, engine_module.UploadToSharePointEngine)
 
-        num_files = len(plans_dicts)
-        assert s3_dl.call_count == num_files
-        assert s3_ul.call_count == num_files
-        assert sp_dl.call_count == 0
-        assert sp_ul.call_count == 0
+    def test_engine_has_correct_secrets(self) -> None:
+        """Test that the engine is initialised with a valid SecretConfig."""
+        eng = create_engine("write_to_s3", "analytics-site", "Documents", "my-bucket")
+        assert isinstance(eng.secrets, SecretConfig)
 
-    def test_each_file_uses_correct_plan(self) -> None:
-        """Test that each engine call receives the plan matching its position."""
-        plans_dicts, expected = create_sp_to_s3_movement_plan()
+    def test_engine_has_correct_library_site(self) -> None:
+        """Test that the engine library carries the provided site slug."""
+        eng = create_engine("write_to_s3", "my-site", "Documents", "my-bucket")
+        assert eng.library.site == "my-site"
 
-        with mock_all_engines() as (s3_dl, _, __, ___):
-            run(mode="write_to_s3", data_movement_plan=plans_dicts)
+    def test_engine_has_correct_library_name(self) -> None:
+        """Test that the engine library carries the provided library name."""
+        eng = create_engine("write_to_s3", "analytics-site", "MyLibrary", "my-bucket")
+        assert eng.library.library == "MyLibrary"
 
-        for i, call_args in enumerate(s3_dl.call_args_list):
-            engine_instance = call_args[0][0]
-            assert isinstance(engine_instance, engine_module.UploadToS3Engine)
-            assert isinstance(engine_instance.secrets, SecretConfig)
-            assert engine_instance.plan == expected.data_to_move[i]
-
-
-class TestRunWriteToSharePoint:
-    """run() with mode='write_to_sharepoint' and data_movement_plan as args."""
-
-    def test_sp_engine_called_not_s3(self) -> None:
-        """Test that UploadToSharePointEngine is used and S3Engine is never called."""
-        plans_dicts, _ = create_s3_to_sp_movement_plan()
-
-        with mock_all_engines() as (s3_dl, s3_ul, sp_dl, sp_ul):
-            run(mode="write_to_sharepoint", data_movement_plan=plans_dicts)
-
-        n = len(plans_dicts)
-        assert sp_dl.call_count == n
-        assert sp_ul.call_count == n
-        assert s3_dl.call_count == 0
-        assert s3_ul.call_count == 0
-
-    def test_each_file_uses_correct_plan(self) -> None:
-        """Test that each engine call receives the plan matching its position."""
-        plans_dicts, expected = create_s3_to_sp_movement_plan()
-
-        with mock_all_engines() as (_, __, sp_dl, ___):
-            run(mode="write_to_sharepoint", data_movement_plan=plans_dicts)
-
-        for i, call_args in enumerate(sp_dl.call_args_list):
-            engine_instance = call_args[0][0]
-            assert isinstance(engine_instance, engine_module.UploadToSharePointEngine)
-            assert isinstance(engine_instance.secrets, SecretConfig)
-            assert engine_instance.plan == expected.data_to_move[i]
-
-
-def test_upload_result_passed_to_upload_file() -> None:
-    """Test that the bytes returned by download_file are passed to upload_file."""
-    plans_dicts, _ = create_sp_to_s3_movement_plan()
-    fake_content = b"test-file-content"
-
-    with mock_all_engines(s3_dl_return=fake_content) as (_, s3_ul, __, ___):
-        run(mode="write_to_s3", data_movement_plan=plans_dicts)
-
-    for call_args in s3_ul.call_args_list:
-        assert call_args[0][1] == fake_content
-
-
-class TestRunFromEnvVars:
-    """run() with mode and/or data_movement_plan resolved from env vars."""
-
-    def test_both_mode_and_plan_from_env_vars(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test that run() works correctly with both values sourced from env vars."""
-        plans_dicts, expected = create_sp_to_s3_movement_plan()
-        monkeypatch.setenv("MODE", "write_to_s3")
-        monkeypatch.setenv("DATA_MOVEMENT_PLAN", json.dumps(plans_dicts))
-
-        with mock_all_engines() as (s3_dl, s3_ul, _, __):
-            run()
-
-        assert s3_dl.call_count == len(plans_dicts)
-        assert s3_ul.call_count == len(plans_dicts)
-
-        for i, call_args in enumerate(s3_dl.call_args_list):
-            assert call_args[0][0].plan == expected.data_to_move[i]
-
-    def test_env_plan_single_dict_wrapped_to_list(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test that a single dict in DATA_MOVEMENT_PLAN env var yields one plan."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
-        single_plan = plans_dicts[0]
-        monkeypatch.setenv("DATA_MOVEMENT_PLAN", json.dumps(single_plan))
-
-        with mock_all_engines() as (s3_dl, s3_ul, _, __):
-            run(mode="write_to_s3")
-
-        assert s3_dl.call_count == 1
-        assert s3_ul.call_count == 1
-
-
-class TestRunErrorPaths:
-    """run() validation and error propagation."""
+    def test_engine_has_correct_bucket(self) -> None:
+        """Test that the engine bucket carries the provided bucket name."""
+        eng = create_engine(
+            "write_to_s3", "analytics-site", "Documents", "target-bucket"
+        )
+        assert eng.bucket.bucket == "target-bucket"
 
     def test_invalid_mode_raises_value_error(self) -> None:
-        """Test that an invalid mode string raises ValueError."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
-
+        """Test that an unrecognised mode raises ValueError."""
         with pytest.raises(ValueError, match="Invalid mode"):
-            run(mode="invalid_mode", data_movement_plan=plans_dicts)  # type: ignore[arg-type]
+            create_engine(
+                "invalid_mode",  # type: ignore[arg-type]
+                "analytics-site",
+                "Documents",
+                "my-bucket",
+            )
 
-    def test_no_mode_raises_value_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test that omitting mode with no MODE env var raises ValueError."""
-        monkeypatch.delenv("MODE", raising=False)
-        monkeypatch.setattr("connector.main.load_dotenv", lambda: None)
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
 
-        with pytest.raises(ValueError, match="Invalid mode"):
-            run(data_movement_plan=plans_dicts)
+class TestCreateMovementPlan:
+    """Tests for the create_movement_plan() helper."""
 
-    def test_no_movement_plan_raises_value_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test missing plan with no DATA_MOVEMENT_PLAN env var raises ValueError."""
-        monkeypatch.delenv("DATA_MOVEMENT_PLAN", raising=False)
+    def test_returns_list_of_movement_plans(self) -> None:
+        """Test that the returned list contains MovementPlan instances."""
+        plans = create_movement_plan(
+            [
+                {
+                    "source": "reports/2026/file1.csv",
+                    "destination": "path/to/file1.csv",
+                },
+                {
+                    "source": "reports/2026/file2.csv",
+                    "destination": "path/to/file2.csv",
+                },
+            ]
+        )
+        assert len(plans) == 2
+        assert all(isinstance(p, MovementPlan) for p in plans)
 
-        with pytest.raises(ValueError, match="No data movement plan"):
-            run(mode="write_to_s3")
+    def test_plans_have_correct_source_and_destination(self) -> None:
+        """Test that source and destination strings are preserved exactly."""
+        plans = create_movement_plan(
+            [{"source": "sp/path/file.csv", "destination": "s3/path/file.csv"}]
+        )
+        assert plans[0].source == "sp/path/file.csv"
+        assert plans[0].destination == "s3/path/file.csv"
 
-    def test_upload_error_propagates(self) -> None:
-        """Test that an UploadError raised during download is re-raised by run()."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
+    def test_empty_plan_list_returns_empty_list(self) -> None:
+        """Test that an empty input produces an empty list."""
+        assert create_movement_plan([]) == []
+
+    def test_single_plan_returns_single_element_list(self) -> None:
+        """Test that a single-item input produces a one-element list."""
+        plans = create_movement_plan(
+            [{"source": "file.csv", "destination": "dest/file.csv"}]
+        )
+        assert len(plans) == 1
+
+
+class TestEngineRunWorkflow:
+    """Integration tests for the create_engine → engine.run() usage pattern."""
+
+    def test_run_passes_download_result_to_upload(self) -> None:
+        """Test that bytes returned by download_file are forwarded to upload_file."""
+        fake_content = b"file-content"
 
         with (
-            mock_all_engines(s3_dl_side_effect=UploadError("download failed")),
-            pytest.raises(UploadError, match="download failed"),
+            patch(
+                "connector.engine.UploadToS3Engine.download_file",
+                autospec=True,
+                return_value=fake_content,
+            ) as mock_dl,
+            patch(
+                "connector.engine.UploadToS3Engine.upload_file",
+                autospec=True,
+            ) as mock_ul,
         ):
-            run(mode="write_to_s3", data_movement_plan=plans_dicts)
+            eng = create_engine(
+                "write_to_s3", "analytics-site", "Documents", "my-bucket"
+            )
+            eng.run("reports/file.csv", "path/to/file.csv")
 
-    def test_upload_error_on_upload_propagates(self) -> None:
-        """Test that an UploadError raised during upload is re-raised by run()."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
+        mock_dl.assert_called_once_with(eng, "reports/file.csv")
+        mock_ul.assert_called_once_with(eng, fake_content, "path/to/file.csv")
 
+    def test_s3_engine_used_for_write_to_s3_mode(self) -> None:
+        """Test that the UploadToS3Engine is selected for write_to_s3 mode."""
         with (
-            mock_all_engines(s3_ul_side_effect=UploadError("upload failed")),
-            pytest.raises(UploadError, match="upload failed"),
-        ):
-            run(mode="write_to_s3", data_movement_plan=plans_dicts)
-
-    def test_upload_error_stops_remaining_files(self) -> None:
-        """Test UploadError on file one prevents remaining files from running."""
-        plans_dicts, _ = create_sp_to_s3_movement_plan()
-
-        with (
-            mock_all_engines(s3_dl_side_effect=UploadError("fail on first")) as (
-                s3_dl,
-                _,
-                __,
-                ___,
+            patch(
+                "connector.engine.UploadToS3Engine.download_file",
+                autospec=True,
+                return_value=b"data",
             ),
-            pytest.raises(UploadError),
+            patch("connector.engine.UploadToS3Engine.upload_file", autospec=True),
+            patch(
+                "connector.engine.UploadToSharePointEngine.download_file",
+                autospec=True,
+            ) as sp_dl,
+            patch(
+                "connector.engine.UploadToSharePointEngine.upload_file",
+                autospec=True,
+            ) as sp_ul,
         ):
-            run(mode="write_to_s3", data_movement_plan=plans_dicts)
+            eng = create_engine(
+                "write_to_s3", "analytics-site", "Documents", "my-bucket"
+            )
+            eng.run("reports/file.csv", "path/to/file.csv")
 
-        assert s3_dl.call_count == 1
+        sp_dl.assert_not_called()
+        sp_ul.assert_not_called()
+
+    def test_sharepoint_engine_used_for_write_to_sharepoint_mode(self) -> None:
+        """Test that UploadToSharePointEngine is selected for write_to_sharepoint."""
+        with (
+            patch(
+                "connector.engine.UploadToSharePointEngine.download_file",
+                autospec=True,
+                return_value=b"data",
+            ),
+            patch(
+                "connector.engine.UploadToSharePointEngine.upload_file",
+                autospec=True,
+            ),
+            patch(
+                "connector.engine.UploadToS3Engine.download_file", autospec=True
+            ) as s3_dl,
+            patch(
+                "connector.engine.UploadToS3Engine.upload_file", autospec=True
+            ) as s3_ul,
+        ):
+            eng = create_engine(
+                "write_to_sharepoint", "analytics-site", "Documents", "my-bucket"
+            )
+            eng.run("path/to/file.csv", "reports/file.csv")
+
+        s3_dl.assert_not_called()
+        s3_ul.assert_not_called()
