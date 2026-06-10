@@ -47,17 +47,19 @@ def build_retry_session() -> requests.Session:
 
 
 def request_with_retry(
-    method: Literal["GET", "POST"],
+    method: Literal["GET", "POST", "DELETE"],
     url: str,
     *,
     max_attempts: int = 3,
     **kwargs: Any,  # noqa: ANN401
 ) -> requests.Response:
-    """Issue a GET/POST request with bounded retries for transient failures."""
+    """Issue a request with bounded retries for transient failures."""
     if method == "GET":
         request_fn: Callable[..., requests.Response] = requests.get
     elif method == "POST":
         request_fn = requests.post
+    elif method == "DELETE":
+        request_fn = requests.delete
     else:
         err = f"Unsupported HTTP method: {method}"
         raise ValueError(err)

@@ -483,3 +483,35 @@ class SharePointConnector(BaseModel):
                 last_logged_pct = pct
 
         self.verify_uploaded_file(expected_size=file_size)
+
+    def delete_file(self) -> None:
+        """Delete a file from SharePoint.
+
+        Args:
+            path (str): The path of the file to delete in SharePoint.
+
+        Returns:
+            None
+
+        Raises:
+            UploadError: If the file cannot be deleted due to an HTTP error or if the
+                        specified file is not found in SharePoint.
+
+        """
+        log.info("Deleting source file '%s' from SharePoint...", self.base_url)
+        delete_url = f"{self.base_url}?$select=name,file"
+        try:
+            resp = request_with_retry(
+                "DELETE", delete_url, headers=self.headers, timeout=30
+            )
+        except requests.RequestException as exc:
+            err = f"Failed to delete file from SharePoint: {exc}"
+            raise UploadError(err) from exc
+
+        if resp.status_code == DOES_NOT_EXIST_CODE:
+            err = f"File not found in SharePoint for deletion: '{self.base_url}'"
+            raise UploadError(err)
+        resp.raise_for_status()
+        log.info(
+            "Successfully deleted source file '%s' from SharePoint.", self.base_url
+        )
