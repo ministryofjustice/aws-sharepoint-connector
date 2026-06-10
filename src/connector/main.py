@@ -52,13 +52,13 @@ def create_engine(
         ValidationError: If any configuration value fails Pydantic validation.
 
     """
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    library = SharePointLibrary(site=sp_site, library=sp_library)
-    bucket = S3Bucket(bucket=s3_bucket)
-
     if mode not in MODE_MAP:
         err = f"Invalid mode '{mode}'. Valid modes: {list(MODE_MAP)}"
         raise ValueError(err)
+
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = SharePointLibrary(site=sp_site, library=sp_library)
+    bucket = S3Bucket(bucket=s3_bucket)
 
     log.info("Creating engine for mode: %s", mode)
 
@@ -89,15 +89,12 @@ def create_movement_plan(
 
     Example::
 
-    ```
-    data_movement_plan=[
-        {
-            "source": "reports/2026/daily_report.csv",
-            "destination": "path/to/daily_report.csv"
+        data_movement_plan = [
+            {
+                "source": "reports/2026/daily_report.csv",
+                "destination": "path/to/daily_report.csv",
             }
-        }
-    ]
-    ```
+        ]
 
     """
     return [
