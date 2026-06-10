@@ -1,8 +1,9 @@
 """S3 connector for handling interactions with Amazon S3."""
 
-import boto3
+from typing import Any
+
 from botocore.exceptions import BotoCoreError, ClientError
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from connector.exceptions import UploadError
 
@@ -10,7 +11,9 @@ from connector.exceptions import UploadError
 class S3Connector(BaseModel):
     """Connector for handling interactions with Amazon S3."""
 
-    client: boto3.client
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    client: Any  # boto3 client; typed as Any because boto3.client is a factory function
     bucket: str
     key: str
 

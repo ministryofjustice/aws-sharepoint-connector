@@ -36,7 +36,7 @@ class TestSharePointLibrary:
             )
         assert (
             "site should not include the 'https://justiceuk.sharepoint.com/sites/'"
-            "prefix." in str(exc_info.value)
+            " prefix." in str(exc_info.value)
         )
 
     def test_library_empty_raises(self) -> None:
