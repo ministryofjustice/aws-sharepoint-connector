@@ -10,7 +10,10 @@ import requests
 from pydantic import BaseModel, Field
 
 from connector import auth
-from connector.config import S3ToSPMovementPlan, SecretConfig, SPToS3MovementPlan
+from connector.config import (
+    SecretConfig,
+    SharePointLibrary,
+)
 from connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
@@ -30,7 +33,7 @@ class SharePointConnector(BaseModel):
     """Connector for interacting with SharePoint via Microsoft Graph API."""
 
     secrets: SecretConfig
-    plan: S3ToSPMovementPlan | SPToS3MovementPlan
+    library: SharePointLibrary
     headers: dict[str, str] = Field(default_factory=dict, init=False)
     drive_id: str = Field(default="", init=False)
     base_url: str = Field(default="", init=False)
@@ -40,10 +43,8 @@ class SharePointConnector(BaseModel):
 
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
-        self.file_path = f"{self.plan.sp_directory}{self.plan.sp_file_name}"
         self.set_graph_headers()
         self.set_drive_id()
-        self.set_base_url()
 
     def set_graph_headers(self) -> None:
         """Obtain Azure token and generate headers for the sharepoint App."""
@@ -62,46 +63,6 @@ class SharePointConnector(BaseModel):
             "Accept": "application/json",
         }
 
-    def ensure_destination_folder(self, drive_id: str, headers: dict[str, str]) -> None:
-        """Check if a specific folder exists in specified SharePoint site.
-
-        Args:
-            drive_id (str): The ID of the SharePoint drive.
-            headers (dict[str, str]): The headers to use for the request
-
-        Returns:
-            dict[str, str]: The metadata of the folder if it exists.
-
-        Raises:
-            UploadError: If the folder does not exist, if the path exists but is not a
-
-        """
-        folder_meta_url = (
-            f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/"
-            f"{quote(self.plan.sp_directory.strip('/'), safe='/')}"
-        )
-        try:
-            folder_resp = request_with_retry(
-                "GET", folder_meta_url, headers=headers, timeout=30
-            )
-            if folder_resp.status_code == DOES_NOT_EXIST_CODE:
-                err = (
-                    f"Destination folder does not exist: '{self.plan.sp_directory}'."
-                    " Please create the folder in SharePoint."
-                )
-                raise UploadError(err)
-            folder_resp.raise_for_status()
-            folder_meta = folder_resp.json()
-            if "folder" not in folder_meta:
-                err = (
-                    "Destination path exists but is not a folder: "
-                    f"'{self.plan.sp_directory}'"
-                )
-                raise UploadError(err)
-        except requests.RequestException as exc:
-            err = f"Failed to verify destination folder: {exc}"
-            raise UploadError(err) from exc
-
     def get_site_id(self) -> str:
         """Fetch the SharePoint site ID using the Graph API.
 
@@ -112,7 +73,7 @@ class SharePointConnector(BaseModel):
             str: The ID of the SharePoint site.
 
         """
-        site_path = f"/sites/{self.plan.sp_site}"
+        site_path = f"/sites/{self.library.site}"
 
         site_url = (
             f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_DOMAIN}{site_path}"
@@ -126,7 +87,7 @@ class SharePointConnector(BaseModel):
 
         site_id: str | None = site_response.json().get("id")
         if site_id is None:
-            err = f"Graph API returned no site ID for '{self.plan.sp_site}'"
+            err = f"Graph API returned no site ID for '{self.library.site}'"
             raise UploadError(err)
         return site_id
 
@@ -143,19 +104,18 @@ class SharePointConnector(BaseModel):
         """
         log.info(
             "Fetching drive ID for library '%s' in site '%s'...",
-            self.plan.sp_library,
-            self.plan.sp_site,
+            self.library.library,
+            self.library.site,
         )
         try:
             site_id = self.get_site_id()
             drive_id = auth.get_drive_id(
                 site_id,
-                self.plan.sp_library,
+                self.library.library,
                 self.headers,
             )
             log.info("Found drive ID")
 
-            self.ensure_destination_folder(drive_id, self.headers)
             self.drive_id = drive_id
         except (requests.HTTPError, ValueError) as exc:
             raise UploadError(str(exc)) from exc
@@ -172,6 +132,19 @@ class SharePointConnector(BaseModel):
         """
         encoded_path = quote(self.file_path, safe="/")
         self.base_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:"
+
+    def update_with_file_path(self, file_path: str) -> None:
+        """Update the connector with the target file path and regenerate URLs.
+
+        Args:
+            file_path (str): The target file path in SharePoint.
+
+        Returns:
+            None
+
+        """
+        self.file_path = file_path
+        self.set_base_url()
 
     def set_upload_url(self) -> None:
         """Generate the target SharePoint url for uploading to.
