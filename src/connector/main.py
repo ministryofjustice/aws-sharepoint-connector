@@ -56,6 +56,10 @@ def create_engine(
     library = SharePointLibrary(site=sp_site, library=sp_library)
     bucket = S3Bucket(bucket=s3_bucket)
 
+    if mode not in MODE_MAP:
+        err = f"Invalid mode '{mode}'. Valid modes: {list(MODE_MAP)}"
+        raise ValueError(err)
+
     log.info("Creating engine for mode: %s", mode)
 
     engine_class = MODE_MAP[mode]
@@ -98,3 +102,8 @@ def create_movement_plan(
         MovementPlan(source=plan["source"], destination=plan["destination"])
         for plan in data_movement_plan
     ]
+
+
+# Add checks for whether configs / filepaths are valid and exist
+# List file in s3 / SP
+# delete / move files
