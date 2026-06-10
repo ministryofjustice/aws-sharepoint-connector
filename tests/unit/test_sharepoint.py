@@ -287,7 +287,7 @@ def test_verify_uploaded_file_success(
     """Test that verify_uploaded_file succeeds when the uploaded file is present."""
     secrets = SecretConfig()  # type: ignore[call-arg]
     expected_size = 13
-    file_name = file_path.split("/")[-1]
+    file_name = file_path.rsplit("/", maxsplit=1)[-1]
 
     with utils.sharepoint_connector_patches():
         connector = make_connector(secrets)
@@ -724,3 +724,65 @@ def test_list_files_request_error() -> None:
         pytest.raises(UploadError, match="Failed to list files in SharePoint library"),
     ):
         connector.list_files()
+
+
+def test_delete_file_success() -> None:
+    """delete_file sends a DELETE request to the expected SharePoint URL."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+
+    connector.update_with_file_path(SP_FILE_PATH)
+    expected_url = (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+        "/root:/reports/2026/file1.csv:?$select=name,file"
+    )
+
+    with patch(
+        "connector.sharepoint.requests.delete",
+        return_value=utils.build_response(status_code=204),
+    ) as mock_delete:
+        connector.delete_file()
+
+    assert mock_delete.call_count == 1
+    assert mock_delete.call_args[0][0] == expected_url
+    assert mock_delete.call_args[1]["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+
+
+def test_delete_file_not_found() -> None:
+    """delete_file raises UploadError when SharePoint returns 404."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "connector.sharepoint.requests.delete",
+            return_value=utils.build_response(status_code=404),
+        ),
+        pytest.raises(UploadError, match="File not found in SharePoint for deletion"),
+    ):
+        connector.delete_file()
+
+
+def test_delete_file_request_error() -> None:
+    """delete_file raises UploadError when the DELETE request fails."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    with utils.sharepoint_connector_patches():
+        connector = make_connector(secrets)
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "connector.sharepoint.requests.delete",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(UploadError, match="Failed to delete file from SharePoint"),
+    ):
+        connector.delete_file()

@@ -8,6 +8,8 @@ import pytest
 from connector import engine
 from connector.config import MovementPlan, S3Bucket, SecretConfig
 from connector.exceptions import UploadError
+from connector.s3 import S3Connector
+from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
 SP_FILE_PATH = utils.SP_FILE_PATH  # "reports/2026/file1.csv"
@@ -373,3 +375,89 @@ def test_upload_to_s3_list_source_files(s3: boto3.client) -> None:
         result = eng.list_source_files()
 
     assert result == ["report.csv", "summary.xlsx"]
+
+
+def test_upload_to_sharepoint_delete_source_file_updates_key(s3: boto3.client) -> None:
+    """delete_source_file for S3 source sets key then deletes the object."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = utils.make_s3_bucket()
+
+    with (
+        utils.sharepoint_connector_patches(),
+        patch.object(S3Connector, "update_with_key") as mock_update_key,
+        patch.object(S3Connector, "delete_object") as mock_delete_object,
+    ):
+        eng = engine.UploadToSharePointEngine(
+            secrets=secrets, library=library, bucket=bucket
+        )
+        eng.delete_source_file(S3_KEY)
+
+    mock_update_key.assert_called_once_with(S3_KEY)
+    mock_delete_object.assert_called_once_with()
+
+
+def test_upload_to_s3_delete_source_file_updates_path(s3: boto3.client) -> None:
+    """delete_source_file for SharePoint source sets file path then deletes."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = S3Bucket(bucket=DEST_S3_BUCKET)
+
+    with (
+        utils.sharepoint_connector_patches(),
+        patch.object(SharePointConnector, "update_with_file_path") as mock_update_path,
+        patch.object(SharePointConnector, "delete_file") as mock_delete_file,
+    ):
+        eng = engine.UploadToS3Engine(secrets=secrets, library=library, bucket=bucket)
+        eng.delete_source_file(SP_FILE_PATH)
+
+    mock_update_path.assert_called_once_with(SP_FILE_PATH)
+    mock_delete_file.assert_called_once_with()
+
+
+def test_engine_run_delete_false_does_not_delete_source(s3: boto3.client) -> None:
+    """run(delete=False) transfers content without deleting the source file."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = S3Bucket(bucket=DEST_S3_BUCKET)
+
+    with (
+        utils.sharepoint_connector_patches(),
+        patch.object(
+            engine.UploadToS3Engine,
+            "download_file",
+            return_value=b"content",
+        ) as mock_download,
+        patch.object(engine.UploadToS3Engine, "upload_file") as mock_upload,
+        patch.object(engine.UploadToS3Engine, "delete_source_file") as mock_delete,
+    ):
+        eng = engine.UploadToS3Engine(secrets=secrets, library=library, bucket=bucket)
+        eng.run(SP_FILE_PATH, S3_KEY, delete=False)
+
+    mock_download.assert_called_once_with(SP_FILE_PATH)
+    mock_upload.assert_called_once_with(b"content", S3_KEY)
+    mock_delete.assert_not_called()
+
+
+def test_engine_run_delete_true_deletes_source(s3: boto3.client) -> None:
+    """run(delete=True) calls delete_source_file after a successful transfer."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = utils.make_sharepoint_library()
+    bucket = S3Bucket(bucket=DEST_S3_BUCKET)
+
+    with (
+        utils.sharepoint_connector_patches(),
+        patch.object(
+            engine.UploadToS3Engine,
+            "download_file",
+            return_value=b"content",
+        ) as mock_download,
+        patch.object(engine.UploadToS3Engine, "upload_file") as mock_upload,
+        patch.object(engine.UploadToS3Engine, "delete_source_file") as mock_delete,
+    ):
+        eng = engine.UploadToS3Engine(secrets=secrets, library=library, bucket=bucket)
+        eng.run(SP_FILE_PATH, S3_KEY, delete=True)
+
+    mock_download.assert_called_once_with(SP_FILE_PATH)
+    mock_upload.assert_called_once_with(b"content", S3_KEY)
+    mock_delete.assert_called_once_with(SP_FILE_PATH)

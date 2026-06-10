@@ -304,3 +304,36 @@ def test_list_objects_error(s3: boto3.client) -> None:
         pytest.raises(UploadError, match="Failed to list objects in s3://"),
     ):
         connector.list_objects()
+
+
+def test_delete_object_success(s3: boto3.client) -> None:
+    """delete_object removes the current S3 key without raising."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=b"data")
+    connector = S3Connector(client=s3, bucket=S3_BUCKET)
+    connector.update_with_key(S3_KEY)
+
+    connector.delete_object()
+
+    with pytest.raises(UploadError, match="does not exist"):
+        connector.check_object_exists()
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        BotoCoreError(),
+        ClientError({"Error": {"Message": "S3 client error"}}, "DeleteObject"),
+    ],
+)
+def test_delete_object_error(s3: boto3.client, exception: Exception) -> None:
+    """delete_object raises UploadError when the S3 client delete call fails."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector = S3Connector(client=s3, bucket=S3_BUCKET)
+    connector.update_with_key(S3_KEY)
+
+    with (
+        patch.object(s3, "delete_object", side_effect=exception),
+        pytest.raises(UploadError, match="Failed to delete s3://"),
+    ):
+        connector.delete_object()
