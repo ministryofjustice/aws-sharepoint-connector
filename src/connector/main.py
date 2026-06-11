@@ -101,8 +101,3 @@ def create_movement_plan(
         MovementPlan(source=plan["source"], destination=plan["destination"])
         for plan in data_movement_plan
     ]
-
-
-# Add checks for whether configs / filepaths are valid and exist
-# List file in s3 / SP
-# delete / move files
