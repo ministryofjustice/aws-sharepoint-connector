@@ -54,7 +54,7 @@ def build_response(
     return response
 
 
-def mock_get_token() -> AccessToken:
+def mock_get_token(_: str) -> AccessToken:
     """Mock get_token for ClientSecretCredential."""
     return AccessToken(
         token="fake-token",  # noqa: S106  # nosec: B106
