@@ -4,7 +4,7 @@ build-backend = "pdm.backend"
 
 [project]
 name = "aws-sharepoint-connector"
-version = "1.0.0"
+version = "1.1.0"
 description = "Provides a connector via Graph API between AWS and SharePoint"
 authors = [
     { name = "Philip Sinfield"},
@@ -41,9 +41,6 @@ package = true
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-
-[project.scripts]
-connector = "connector.main:run"
 
 [tool.mypy]
 strict = true
