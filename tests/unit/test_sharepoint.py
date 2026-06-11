@@ -51,7 +51,8 @@ def test_sharepoint_connector_initialization() -> None:
 def test_set_graph_headers() -> None:
     """Test that set_graph_headers populates the correct auth headers."""
     connector = make_connector()
-    connector.set_graph_headers()
+    with utils.sharepoint_connector_patches():
+        connector.set_graph_headers()
 
     assert connector.headers == {
         "Authorization": "Bearer fake-token",
@@ -101,16 +102,27 @@ def test_get_drive_id_success() -> None:
 
     with patch(
         "connector.sharepoint.requests.get",
-        return_value=utils.mock_drive_id_response(content="complete"),
+        side_effect=[
+            utils.mock_site_id_response(),
+            utils.mock_drive_id_response(content="complete"),
+        ],
     ) as mock_get:
         connector.set_drive_id()
 
     assert connector.drive_id == "fake-drive-id"
-    assert mock_get.call_count == 1
-    assert mock_get.call_args[0][0] == (
+    assert mock_get.call_count == 2
+    assert mock_get.call_args_list[0].args[0] == (
+        "https://graph.microsoft.com/v1.0/sites/"
+        "justiceuk.sharepoint.com:/sites/analytics-site"
+    )
+    assert mock_get.call_args_list[0].kwargs["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+    assert mock_get.call_args_list[1].args[0] == (
         "https://graph.microsoft.com/v1.0/sites/fake-site-id/drives"
     )
-    assert mock_get.call_args[1]["headers"] == {
+    assert mock_get.call_args_list[1].kwargs["headers"] == {
         "Authorization": "Bearer fake-token",
         "Accept": "application/json",
     }
@@ -214,15 +226,14 @@ def test_set_download_url() -> None:
 
 def test_list_files_success() -> None:
     """list_files returns file names from the library root, excluding folders."""
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[
-            utils.mock_list_files_response(
-                file_names=["report.csv", "summary.xlsx"],
-                folder_names=["archive"],
-            )
-        ],
+    connector = make_connector()
+    with patch(
+        "connector.sharepoint.requests.get",
+        return_value=utils.mock_list_files_response(
+            file_names=["report.csv", "summary.xlsx"],
+            folder_names=["archive"],
+        ),
     ):
-        connector = make_connector()
         result = connector.list_files()
     assert result == ["report.csv", "summary.xlsx"]
 
@@ -233,10 +244,11 @@ def test_list_files_pagination() -> None:
         file_names=["a.csv"], next_link="https://graph.microsoft.com/v1.0/nextpage"
     )
     page2 = utils.mock_list_files_response(file_names=["b.csv", "c.csv"])
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[page1, page2],
+    connector = make_connector()
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[page1, page2],
     ):
-        connector = make_connector()
         result = connector.list_files()
     assert result == ["a.csv", "b.csv", "c.csv"]
 
@@ -265,61 +277,74 @@ def test_check_object_exists_success(
     object_type: Literal["file", "folder"], object_name: str
 ) -> None:
     """check_object_exists does not raise when the object is present."""
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[utils.mock_check_file_response(200, object_name)],
+    connector = make_connector()
+    response = utils.mock_check_object_response(200, object_name, object_type)
+    with patch(
+        "connector.sharepoint.requests.get",
+        return_value=response,
     ):
-        connector = make_connector()
         connector.check_object_exists(
             f"reports/{object_name}", object_type
         )  # should not raise
 
 
 @pytest.mark.parametrize(
-    ("object_type", "match_message"),
+    ("object_type", "object_name", "match_message"),
     [
-        ("file", "File not found in SharePoint"),
-        ("folder", "Folder not found in SharePoint"),
+        ("file", SP_FILE_NAME, "File not found in SharePoint"),
+        ("folder", "2026", "Folder not found in SharePoint"),
     ],
 )
 def test_check_object_exists_not_found(
-    object_type: Literal["file", "folder"], match_message: str
+    object_type: Literal["file", "folder"], object_name: str, match_message: str
 ) -> None:
     """check_object_exists raises UploadError when the file is absent."""
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[utils.build_response(status_code=404)],
+    connector = make_connector()
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            return_value=utils.build_response(status_code=404, json_body={}),
+        ),
+        pytest.raises(UploadError, match=match_message),
     ):
-        connector = make_connector()
-        with pytest.raises(UploadError, match=match_message):
-            connector.check_object_exists(SP_FILE_PATH, object_type)
+        connector.check_object_exists(object_name, object_type)
 
 
 @pytest.mark.parametrize(
-    ("object_type", "json_body", "match_message"),
+    ("object_type", "json_body", "input_path"),
     [
-        ("file", {"name": "reports"}, "Failed to check SharePoint file existence"),
+        (
+            "file",
+            {"name": "reports"},
+            "reports",
+        ),
         (
             "folder",
             {"name": "daily_report.csv"},
-            "Failed to check SharePoint folder existence",
+            "daily_report.csv",
         ),
     ],
 )
 def test_check_object_exists_incorrect_type(
     object_type: Literal["file", "folder"],
     json_body: dict[str, str],
-    match_message: str,
+    input_path: str,
 ) -> None:
     """check_object_exists raises UploadError if path resolves to wrong object type."""
     folder_as_file_response = utils.build_response(
         status_code=200,
-        json_body=json_body,  # no "file" facet
+        json_body=json_body,
     )
     with utils.sharepoint_connector_patches(
         extra_get_side_effects=[folder_as_file_response],
     ):
         connector = make_connector()
-        with pytest.raises(UploadError, match=match_message):
-            connector.check_object_exists(SP_FILE_PATH, object_type)
+        with pytest.raises(
+            UploadError,
+            match=f"SharePoint path 'reports/{input_path}' exists but is not a"
+            f" {object_type}",
+        ):
+            connector.check_object_exists(f"reports/{input_path}", object_type)
 
 
 @pytest.mark.parametrize(
@@ -356,7 +381,7 @@ def test_fetch_file_success() -> None:
     ):
         data = connector.fetch_file()
 
-    assert data == b'{"content": "fake-file-content"}'
+    assert data == b"fake-file-content"
 
 
 def test_fetch_file_not_found() -> None:

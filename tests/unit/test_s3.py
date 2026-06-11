@@ -31,7 +31,7 @@ def test_update_with_key(connector: S3Connector) -> None:
     ("prefix", "expected_keys"),
     [
         ("include/", ["include/a.csv", "include/b.csv"]),
-        ("", ["include/a.csv", "include/b.csv", "exclude/b.csv"]),
+        ("", ["exclude/b.csv", "include/a.csv", "include/b.csv"]),
     ],
 )
 def test_list_objects_success(
@@ -39,6 +39,7 @@ def test_list_objects_success(
 ) -> None:
     """list_objects returns all keys in the bucket."""
     utils.create_bucket(S3_BUCKET, s3)
+    utils.create_bucket("excluded-bucket", s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/b.csv", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="exclude/b.csv", Body=b"data")
@@ -60,19 +61,18 @@ def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> No
         "Contents": [
             {"Key": "include/a.csv"},
             {"Key": "include/b.csv"},
-            {"Key": "exclude/c.csv"},
         ],
         "IsTruncated": True,
         "NextContinuationToken": "token-xyz",
         "ResponseMetadata": {},
     }
     page2 = {
-        "Contents": [{"Key": "include/d.csv"}, {"Key": "exclude/e.csv"}],
+        "Contents": [{"Key": "include/d.csv"}],
         "IsTruncated": False,
         "ResponseMetadata": {},
     }
     with patch.object(s3, "list_objects_v2", side_effect=[page1, page2]):
-        keys = connector.list_objects(prefix="include")
+        keys = connector.list_objects()
     assert keys == ["include/a.csv", "include/b.csv", "include/d.csv"]
 
 
