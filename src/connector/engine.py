@@ -61,11 +61,7 @@ class Engine(ABC):
 
     @abstractmethod
     def validate_plan(self, source: str, destination: str) -> None:
-        """Pre-flight check all movement plans before execution.
-
-        Must check every plan and collect all errors before raising, so the
-        caller receives a single report of every problem rather than discovering
-        failures one at a time.
+        """Validate planned file movement is feasible before execution.
 
         Args:
             source (str): Source file path (S3 key or SharePoint path).
@@ -113,7 +109,7 @@ class UploadToSharePointEngine(Engine):
         return self.s3_connector.list_objects()
 
     def validate_plan(self, source: str, destination: str) -> None:
-        """Pre-flight check all plans before execution.
+        """Validate planned file movement is feasible before execution.
 
         Validates that:
 
@@ -152,13 +148,10 @@ class UploadToSharePointEngine(Engine):
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
-            err = (
-                f"Pre-flight validation failed with {len(errors)} error(s):\n"
-                f"{all_errors}"
-            )
+            err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
             raise UploadError(err)
 
-        log.info("Pre-flight validation passed.")
+        log.info("Validation passed.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from S3 and return its content as bytes.
@@ -214,7 +207,7 @@ class UploadToS3Engine(Engine):
         return self.sharepoint_connector.list_files()
 
     def validate_plan(self, source: str, destination: str) -> None:
-        """Pre-flight check all plans before execution.
+        """Validate planned file movement is feasible before execution.
 
         Validates that:
 
@@ -247,13 +240,10 @@ class UploadToS3Engine(Engine):
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
-            err = (
-                f"Pre-flight validation failed with {len(errors)} error(s):\n"
-                f"{all_errors}"
-            )
+            err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
             raise UploadError(err)
 
-        log.info("Pre-flight validation passed.")
+        log.info("Validation passed.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
