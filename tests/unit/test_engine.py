@@ -105,7 +105,7 @@ class TestEngines:
             )
 
         assert "Validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
+        assert "Validation failed with 1 error(s)" in str(exc_info.value)
 
     def test_upload_sharepoint_validation_plan_multi_invalid(
         self, s3: boto3.client
@@ -134,7 +134,7 @@ class TestEngines:
 
         assert "S3 validation failed" in str(exc_info.value)
         assert "SharePoint validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
+        assert "Validation failed with 2 error(s)" in str(exc_info.value)
 
     def test_upload_sharepoint_download_file(self, s3: boto3.client) -> None:
         """Test that download_file fetches the correct bytes from S3."""
@@ -313,7 +313,7 @@ class TestEngines:
             )
 
         assert "Validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
+        assert "Validation failed with 1 error(s)" in str(exc_info.value)
 
     def test_upload_s3_validation_plan_multi_invalid(self, s3: boto3.client) -> None:
         """Test that validate_plan raises UploadError for multiple issues."""
@@ -338,7 +338,7 @@ class TestEngines:
 
         assert "S3 validation failed" in str(exc_info.value)
         assert "SharePoint validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
+        assert "Validation failed with 2 error(s)" in str(exc_info.value)
 
     def test_upload_s3_download_file(self, s3: boto3.client) -> None:
         """Test that download_file fetches the correct bytes from SharePoint."""
