@@ -23,7 +23,22 @@ log = setup_logger()
 
 @dataclass
 class Engine(ABC):
-    """Abstract base class for different storage engines."""
+    """Abstract base class for different storage engines.
+
+    This class provides a common interface for engines that handle file transfers
+    between S3 and SharePoint. Subclasses must implement methods for listing,
+    downloading, uploading, and deleting files, as well as validating transfer plans.
+
+    Methods:
+        list_source_files: List files available in the source storage.
+        download_file: Download a file from the source storage.
+        upload_file: Upload a file to the destination storage.
+        delete_source_file: Delete a file from the source storage after successful
+            transfer.
+        validate_plan: Validate planned file movement is feasible before execution.
+        run: Transfer a single file from source to destination storage.
+
+    """
 
     secrets: SecretConfig
     library: SharePointLibrary
@@ -78,10 +93,18 @@ class Engine(ABC):
         Args:
             source (str): Source file path (S3 key or SharePoint path).
             destination (str): Destination file path (SharePoint path or S3 key).
-            delete (bool): Whether to delete the source file after transfer.
+            delete (bool): Whether to delete the source file after a successful
+                transfer.
 
         Raises:
             UploadError: If the download or upload step fails.
+
+        Source is the full S3 key (excluding the bucket name) or the full path to the
+        SharePoint file (excluding the site and library). Destination is the full path
+        to the SharePoint file (excluding the site and library) or the full S3 key
+        (excluding the bucket name).
+
+        Setting 'delete' will remove the source file after a successful transfer.
 
         """
         log.info("Validating movement plan")
@@ -102,7 +125,18 @@ class Engine(ABC):
 
 
 class UploadToSharePointEngine(Engine):
-    """Engine for uploading files from S3 to SharePoint."""
+    """Engine for uploading files from S3 to SharePoint.
+
+    Methods:
+        list_source_files: List files available in the S3 source bucket.
+        download_file: Download a file from the S3 source bucket.
+        upload_file: Upload a file to the SharePoint destination.
+        delete_source_file: Delete a file from the S3 source bucket after successful
+            transfer.
+        validate_plan: Validate planned file movement is feasible before execution.
+        run: Transfer a single file from S3 to SharePoint.
+
+    """
 
     def list_source_files(self) -> list[str]:
         """List all object keys in the S3 source bucket."""
@@ -200,7 +234,18 @@ class UploadToSharePointEngine(Engine):
 
 
 class UploadToS3Engine(Engine):
-    """Engine for uploading files from SharePoint to S3."""
+    """Engine for uploading files from SharePoint to S3.
+
+    Methods:
+       list_source_files: List files available in the S3 source bucket.
+       download_file: Download a file from the S3 source bucket.
+       upload_file: Upload a file to the SharePoint destination.
+       delete_source_file: Delete a file from the S3 source bucket after successful
+            transfer.
+       validate_plan: Validate planned file movement is feasible before execution.
+       run: Transfer a single file from S3 to SharePoint.
+
+    """
 
     def list_source_files(self) -> list[str]:
         """List all file paths in the SharePoint source library."""

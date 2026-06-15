@@ -27,9 +27,24 @@ def create_engine(
 ) -> UploadToSharePointEngine | UploadToS3Engine:
     """Create an engine instance for transferring files between S3 and SharePoint.
 
-    Authenticates to Azure Graph API and validates all configuration at construction
-    time. The returned engine can then be used to transfer individual files via
-    ``engine.run(source, destination)``.
+    Available engines are ``UploadToS3Engine`` and ``UploadToSharePointEngine``.
+    Each is configured with the same SharePoint site, SharePoint library, and S3 bucket.
+    The engine will parse one as the source and one as the destination.
+
+    Make use of the 'list_source_files' method to what files are located in the source
+    and amend according to your needs.
+
+    Iterate over each file to be transferred and call the 'run' method with the
+    source and destination paths to perform the transfer. An s3 source/destination is
+    the full s3 key (excluding the bucket name) and a SharePoint source/destination is
+    the full path to the file (excluding the site and library).
+
+    The 'run' method validates that the configuration is correct (expected bucket,
+    folders and files exist). Then downloads the file from the source and uploads it to
+    the destination.
+
+    Optionally delete the source files after successfully transferring them by using
+    the optional 'delete' argument in the 'run' method.
 
     Args:
         mode (Literal["write_to_s3", "write_to_sharepoint"]): Transfer direction.
@@ -48,6 +63,15 @@ def create_engine(
     Raises:
         ValueError: If ``mode`` is not one of the valid transfer directions.
         ValidationError: If any configuration value fails Pydantic validation.
+
+    Example:
+        >>> eng = create_engine(
+        ...     mode="write_to_s3",
+        ...     sp_site="analytics-site",
+        ...     sp_library="Documents",
+        ...     s3_bucket="my-destination-bucket",
+        ... )
+        >>> eng.run(source="reports/2026/file1.csv", destination="path/to/file1.csv")
 
     """
     if mode not in MODE_MAP:
