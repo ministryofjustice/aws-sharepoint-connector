@@ -1,18 +1,14 @@
 """E2E tests for create_engine() + engine.run(): write to S3 and SharePoint."""
 
 from math import ceil
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import boto3
 import pytest
 from requests import Response
 
-from connector.main import create_engine, create_movement_plan
+from connector.main import create_engine
 from tests import test_utils as utils
-
-if TYPE_CHECKING:
-    from connector.config import MovementPlanDict
 
 
 def create_test_data(size_mb: int) -> bytes:
@@ -36,14 +32,13 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
     sp_library = utils.SP_LIBRARY
     s3_bucket = "my-destination-bucket"
 
-    plans_dicts: list[MovementPlanDict] = [
+    plans_dicts: list[dict[str, str]] = [
         {
             "source": f"reports/2026/file{i}.csv",
             "destination": f"path/to/file{i}.csv",
         }
         for i in range(1, file_count + 1)
     ]
-    plans = create_movement_plan(plans_dicts)
 
     file_sizes_mb = [1] * file_count
     expected_payloads = [create_test_data(size) for size in file_sizes_mb]
@@ -74,15 +69,15 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
         patch("connector.sharepoint.requests.get", side_effect=get_mocks),
     ):
         eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
-        for plan in plans:
-            eng.run(plan.source, plan.destination)
+        for plan in plans_dicts:
+            eng.run(plan["source"], plan["destination"])
 
     for _, (plan, expected_payload) in enumerate(
-        zip(plans, expected_payloads, strict=True)
+        zip(plans_dicts, expected_payloads, strict=True)
     ):
-        obj = s3.get_object(Bucket=s3_bucket, Key=plan.destination)
+        obj = s3.get_object(Bucket=s3_bucket, Key=plan["destination"])
         assert obj["Body"].read() == expected_payload, (
-            f"Data mismatch for {plan.destination}"
+            f"Data mismatch for {plan['destination']}"
         )
 
 
@@ -93,22 +88,21 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     sp_library = utils.SP_LIBRARY
     s3_bucket = utils.S3_BUCKET
 
-    plans_dicts: list[MovementPlanDict] = [
+    plans_dicts: list[dict[str, str]] = [
         {
             "source": f"path/to/file{i}.csv",
             "destination": f"reports/2026/file{i}.csv",
         }
         for i in range(1, file_count + 1)
     ]
-    plans = create_movement_plan(plans_dicts)
 
     file_sizes_mb = [1] * file_count
     expected_payloads = [create_test_data(size) for size in file_sizes_mb]
 
     utils.create_bucket(s3_bucket, s3)
 
-    for plan, payload in zip(plans, expected_payloads, strict=True):
-        s3.put_object(Bucket=s3_bucket, Key=plan.source, Body=payload)
+    for plan, payload in zip(plans_dicts, expected_payloads, strict=True):
+        s3.put_object(Bucket=s3_bucket, Key=plan["source"], Body=payload)
 
     chunk_size = 10 * 1024 * 1024
     chunk_counts = [ceil((size * 1024 * 1024) / chunk_size) for size in file_sizes_mb]
@@ -156,8 +150,8 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
         ) as mock_session_put,
     ):
         eng = create_engine("write_to_sharepoint", sp_site, sp_library, s3_bucket)
-        for plan in plans:
-            eng.run(plan.source, plan.destination)
+        for plan in plans_dicts:
+            eng.run(plan["source"], plan["destination"])
 
     put_calls = mock_session_put.call_args_list
     assert len(put_calls) == total_chunks, (

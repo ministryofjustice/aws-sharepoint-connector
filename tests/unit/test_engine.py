@@ -6,7 +6,7 @@ import boto3
 import pytest
 
 from connector import engine
-from connector.config import MovementPlan, SecretConfig
+from connector.config import SecretConfig
 from connector.exceptions import UploadError
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
@@ -198,9 +198,6 @@ class TestEngines:
         self, exp_delete_calls: int, *, delete: bool, s3: boto3.client
     ) -> None:
         """Test that run executes the upload process without errors."""
-        plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
         with (
             patch.object(
                 engine.UploadToSharePointEngine,
@@ -218,7 +215,11 @@ class TestEngines:
             ) as mock_validate,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.run(plan.source, plan.destination, delete=delete)
+            upload_sp_engine.run(
+                source="reports/2026/file.csv",
+                destination="path/to/file.csv",
+                delete=delete,
+            )
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
@@ -229,9 +230,6 @@ class TestEngines:
 
     def test_upload_sharepoint_run_no_delete_option(self, s3: boto3.client) -> None:
         """Test that run executes the upload process without errors."""
-        plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
         with (
             patch.object(
                 engine.UploadToSharePointEngine,
@@ -249,7 +247,9 @@ class TestEngines:
             ) as mock_validate,
         ):
             upload_sharepoint_engine = self.setup_engine("sharepoint", s3)
-            upload_sharepoint_engine.run(plan.source, plan.destination)
+            upload_sharepoint_engine.run(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
@@ -398,9 +398,6 @@ class TestEngines:
         self, exp_delete_calls: int, *, delete: bool, s3: boto3.client
     ) -> None:
         """Test that run executes the upload process without errors."""
-        plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
         with (
             patch.object(
                 engine.UploadToS3Engine,
@@ -414,7 +411,11 @@ class TestEngines:
             patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.run(plan.source, plan.destination, delete=delete)
+            upload_s3_engine.run(
+                source="reports/2026/file.csv",
+                destination="path/to/file.csv",
+                delete=delete,
+            )
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
