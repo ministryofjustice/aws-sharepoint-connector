@@ -4,8 +4,6 @@ from typing import Literal
 
 from connector import utils
 from connector.config import (
-    MovementPlan,
-    MovementPlanDict,
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
@@ -64,40 +62,3 @@ def create_engine(
 
     engine_class = MODE_MAP[mode]
     return engine_class(secrets=secrets, library=library, bucket=bucket)
-
-
-def create_movement_plan(
-    data_movement_plan: list[MovementPlanDict],
-) -> list[MovementPlan]:
-    """Convert a list of movement plan dicts into validated ``MovementPlan`` objects.
-
-    Each dict must contain ``source`` and ``destination`` string keys. In
-    ``write_to_s3`` mode, ``source`` is a SharePoint file path and ``destination``
-    is an S3 key. In ``write_to_sharepoint`` mode the roles are reversed.
-
-    Args:
-        data_movement_plan (list[MovementPlanDict]):
-            A list of ``{"source": str, "destination": str}`` dicts describing
-            the files to transfer.
-
-    Returns:
-        list[MovementPlan]:
-            A list of validated ``MovementPlan`` instances.
-
-    Raises:
-        ValidationError: If any dict is missing required fields.
-
-    Example::
-
-        data_movement_plan = [
-            {
-                "source": "reports/2026/daily_report.csv",
-                "destination": "path/to/daily_report.csv",
-            }
-        ]
-
-    """
-    return [
-        MovementPlan(source=plan["source"], destination=plan["destination"])
-        for plan in data_movement_plan
-    ]
