@@ -9,7 +9,6 @@ from typing import Any
 import boto3
 
 from connector.config import (
-    MovementPlan,
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
@@ -61,7 +60,7 @@ class Engine(ABC):
         """Delete a file from the source storage after successful transfer."""
 
     @abstractmethod
-    def validate_plans(self, plans: list[MovementPlan]) -> None:
+    def validate_plan(self, source: str, destination: str) -> None:
         """Pre-flight check all movement plans before execution.
 
         Must check every plan and collect all errors before raising, so the
@@ -69,7 +68,8 @@ class Engine(ABC):
         failures one at a time.
 
         Args:
-            plans (list[MovementPlan]): The movement plans to validate.
+            source (str): Source file path (S3 key or SharePoint path).
+            destination (str): Destination file path (SharePoint path or S3 key).
 
         Raises:
             UploadError: If one or more validation checks fail.
@@ -88,6 +88,8 @@ class Engine(ABC):
             UploadError: If the download or upload step fails.
 
         """
+        log.info("Validating movement plan")
+        self.validate_plan(source=source, destination=destination)
         log.info("Starting transfer: '%s' -> '%s'", source, destination)
         content = self.download_file(source)
         self.upload_file(content, destination)
@@ -109,6 +111,54 @@ class UploadToSharePointEngine(Engine):
     def list_source_files(self) -> list[str]:
         """List all object keys in the S3 source bucket."""
         return self.s3_connector.list_objects()
+
+    def validate_plan(self, source: str, destination: str) -> None:
+        """Pre-flight check all plans before execution.
+
+        Validates that:
+
+        - The S3 source bucket is accessible.
+        - The source S3 key exists.
+        - The destination SharePoint parent folder exists.
+
+        Args:
+            source (str): Source file path (S3 key).
+            destination (str): Destination file path (SharePoint path).
+
+        Raises:
+            UploadError: If one or more validation checks fail.
+
+        """
+        log.info("Validating source: '%s' and destination: '%s'", source, destination)
+        errors: list[str] = []
+
+        try:
+            self.s3_connector.check_bucket_exists()
+        except UploadError as exc:
+            errors.append(str(exc))
+
+        try:
+            self.s3_connector.update_with_key(source)
+            self.s3_connector.check_object_exists()
+        except UploadError as exc:
+            errors.append(str(exc))
+
+        folder = str(Path(destination).parent)
+        if folder and folder != ".":
+            try:
+                self.sharepoint_connector.check_object_exists(folder, "folder")
+            except UploadError as exc:
+                errors.append(str(exc))
+
+        if errors:
+            all_errors = "\n".join(f"  - {e}" for e in errors)
+            err = (
+                f"Pre-flight validation failed with {len(errors)} error(s):\n"
+                f"{all_errors}"
+            )
+            raise UploadError(err)
+
+        log.info("Pre-flight validation passed.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from S3 and return its content as bytes.
@@ -155,26 +205,34 @@ class UploadToSharePointEngine(Engine):
         self.s3_connector.delete_object()
         log.info("Source file s3://%s/%s deleted.", self.bucket.bucket, source)
 
-    def validate_plans(self, plans: list[MovementPlan]) -> None:
+
+class UploadToS3Engine(Engine):
+    """Engine for uploading files from SharePoint to S3."""
+
+    def list_source_files(self) -> list[str]:
+        """List all file paths in the SharePoint source library."""
+        return self.sharepoint_connector.list_files()
+
+    def validate_plan(self, source: str, destination: str) -> None:
         """Pre-flight check all plans before execution.
 
         Validates that:
 
-        - The S3 source bucket is accessible.
-        - Each source S3 key exists.
-        - Each destination SharePoint parent folder exists.
+        - The S3 destination bucket is accessible.
+        - The source file exists in SharePoint.
 
         All errors are collected before raising, so the caller receives a single
         report of every problem.
 
         Args:
-            plans (list[MovementPlan]): The movement plans to validate.
+            source (str): Source file path (SharePoint path).
+            destination (str): Destination file path (S3 key).
 
         Raises:
             UploadError: If one or more validation checks fail.
 
         """
-        log.info("Running pre-flight validation for %d plan(s)...", len(plans))
+        log.info("Validating source: '%s' and destination: '%s'", source, destination)
         errors: list[str] = []
 
         try:
@@ -182,19 +240,10 @@ class UploadToSharePointEngine(Engine):
         except UploadError as exc:
             errors.append(str(exc))
 
-        for plan in plans:
-            try:
-                self.s3_connector.update_with_key(plan.source)
-                self.s3_connector.check_object_exists()
-            except UploadError as exc:
-                errors.append(str(exc))
-
-            folder = str(Path(plan.destination).parent)
-            if folder and folder != ".":
-                try:
-                    self.sharepoint_connector.check_object_exists(folder, "folder")
-                except UploadError as exc:
-                    errors.append(str(exc))
+        try:
+            self.sharepoint_connector.check_object_exists(source, "file")
+        except UploadError as exc:
+            errors.append(str(exc))
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
@@ -204,15 +253,7 @@ class UploadToSharePointEngine(Engine):
             )
             raise UploadError(err)
 
-        log.info("Pre-flight validation passed for all %d plan(s).", len(plans))
-
-
-class UploadToS3Engine(Engine):
-    """Engine for uploading files from SharePoint to S3."""
-
-    def list_source_files(self) -> list[str]:
-        """List all file paths in the SharePoint source library."""
-        return self.sharepoint_connector.list_files()
+        log.info("Pre-flight validation passed.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
@@ -264,45 +305,3 @@ class UploadToS3Engine(Engine):
         self.sharepoint_connector.update_with_file_path(source)
         self.sharepoint_connector.delete_file()
         log.info("Source file '%s' deleted from SharePoint.", source)
-
-    def validate_plans(self, plans: list[MovementPlan]) -> None:
-        """Pre-flight check all plans before execution.
-
-        Validates that:
-
-        - The S3 destination bucket is accessible.
-        - Each source file exists in SharePoint.
-
-        All errors are collected before raising, so the caller receives a single
-        report of every problem.
-
-        Args:
-            plans (list[MovementPlan]): The movement plans to validate.
-
-        Raises:
-            UploadError: If one or more validation checks fail.
-
-        """
-        log.info("Running pre-flight validation for %d plan(s)...", len(plans))
-        errors: list[str] = []
-
-        try:
-            self.s3_connector.check_bucket_exists()
-        except UploadError as exc:
-            errors.append(str(exc))
-
-        for plan in plans:
-            try:
-                self.sharepoint_connector.check_object_exists(plan.source, "file")
-            except UploadError as exc:
-                errors.append(str(exc))
-
-        if errors:
-            all_errors = "\n".join(f"  - {e}" for e in errors)
-            err = (
-                f"Pre-flight validation failed with {len(errors)} error(s):\n"
-                f"{all_errors}"
-            )
-            raise UploadError(err)
-
-        log.info("Pre-flight validation passed for all %d plan(s).", len(plans))

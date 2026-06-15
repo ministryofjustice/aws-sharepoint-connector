@@ -53,8 +53,18 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
     get_mocks = [
         utils.mock_site_id_response(),
         utils.mock_drive_id_response("complete"),
-        *[build_binary_response(expected_payloads[i]) for i in range(file_count)],
     ]
+    for i in range(1, file_count + 1):
+        get_mocks.extend(
+            [
+                utils.mock_check_object_response(
+                    200,
+                    f"file{i}.csv",
+                    "file",
+                ),
+                build_binary_response(expected_payloads[i - 1]),
+            ]
+        )
 
     with (
         patch(
@@ -106,15 +116,22 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     get_mocks: list[Response] = [
         utils.mock_site_id_response(),
         utils.mock_drive_id_response("complete"),
-        *[
-            utils.mock_verify_uploaded_file_response(
-                200,
-                f"file{i + 1}.csv",
-                file_sizes_mb[i] * 1024 * 1024,
-            )
-            for i in range(file_count)
-        ],
     ]
+    for i in range(file_count):
+        get_mocks.extend(
+            [
+                utils.mock_check_object_response(
+                    200,
+                    "reports/2026",
+                    "folder",
+                ),
+                utils.mock_verify_uploaded_file_response(
+                    200,
+                    f"file{i + 1}.csv",
+                    file_sizes_mb[i] * 1024 * 1024,
+                ),
+            ]
+        )
     post_mocks = [utils.mock_upload_url_response() for _ in range(file_count)]
     session_get_mocks = [
         utils.mock_get_next_start_response() for _ in range(file_count)

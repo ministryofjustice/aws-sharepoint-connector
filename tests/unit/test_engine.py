@@ -54,6 +54,88 @@ class TestEngines:
         assert files == ["file1.csv", "file2.csv"]
         mock_list.assert_called_once_with()
 
+    def test_upload_sharepoint_validate_plan_valid(self, s3: boto3.client) -> None:
+        """Test that validate_plan does not error on valid plans."""
+        upload_sp_engine = self.setup_engine("sharepoint", s3)
+
+        with (
+            patch.object(S3Connector, "check_bucket_exists"),
+            patch.object(S3Connector, "update_with_key"),
+            patch.object(S3Connector, "check_object_exists"),
+            patch.object(SharePointConnector, "check_object_exists"),
+        ):
+            upload_sp_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
+        assert True  #  No exceptions raised
+
+    @pytest.mark.parametrize(
+        ("object_to_fail", "method_to_fail"),
+        [
+            (S3Connector, "check_bucket_exists"),
+            (S3Connector, "update_with_key"),
+            (S3Connector, "check_object_exists"),
+            (SharePointConnector, "check_object_exists"),
+        ],
+    )
+    def test_upload_sharepoint_validate_plan_invalid(
+        self,
+        object_to_fail: type[SharePointConnector | S3Connector],
+        method_to_fail: str,
+        s3: boto3.client,
+    ) -> None:
+        """Test that validate_plan raises UploadError for an invalid plan."""
+        upload_sp_engine = self.setup_engine("sharepoint", s3)
+
+        with (
+            patch.object(S3Connector, "check_bucket_exists"),
+            patch.object(S3Connector, "update_with_key"),
+            patch.object(S3Connector, "check_object_exists"),
+            patch.object(SharePointConnector, "check_object_exists"),
+            patch.object(
+                object_to_fail,
+                method_to_fail,
+                side_effect=UploadError("Validation failed"),
+            ),
+            pytest.raises(UploadError) as exc_info,
+        ):
+            upload_sp_engine.validate_plan(
+                source="reports/2026/file.csv",
+                destination="path/to/file.csv",
+            )
+
+        assert "Validation failed" in str(exc_info.value)
+        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
+
+    def test_upload_sharepoint_validation_plan_multi_invalid(
+        self, s3: boto3.client
+    ) -> None:
+        """Test that validate_plan raises UploadError for multiple issues."""
+        upload_sp_engine = self.setup_engine("sharepoint", s3)
+
+        with (
+            patch.object(
+                S3Connector,
+                "check_bucket_exists",
+                side_effect=UploadError("S3 validation failed"),
+            ),
+            patch.object(
+                SharePointConnector,
+                "check_object_exists",
+                side_effect=UploadError("SharePoint validation failed"),
+            ),
+            patch.object(S3Connector, "update_with_key"),
+            patch.object(S3Connector, "check_object_exists"),
+            pytest.raises(UploadError) as exc_info,
+        ):
+            upload_sp_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
+
+        assert "S3 validation failed" in str(exc_info.value)
+        assert "SharePoint validation failed" in str(exc_info.value)
+        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
+
     def test_upload_sharepoint_download_file(self, s3: boto3.client) -> None:
         """Test that download_file fetches the correct bytes from S3."""
         with (
@@ -105,90 +187,6 @@ class TestEngines:
         mock_update_key.assert_called_once_with(S3_KEY)
         mock_delete_object.assert_called_once_with()
 
-    def test_upload_sharepoint_validate_plans_valid(self, s3: boto3.client) -> None:
-        """Test that validate_plans returns True for valid plans."""
-        valid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_sp_engine = self.setup_engine("sharepoint", s3)
-
-        with (
-            patch.object(S3Connector, "check_bucket_exists"),
-            patch.object(S3Connector, "update_with_key"),
-            patch.object(S3Connector, "check_object_exists"),
-            patch.object(SharePointConnector, "check_object_exists"),
-        ):
-            upload_sp_engine.validate_plans([valid_plan])
-        assert True  #  No exceptions raised
-
-    @pytest.mark.parametrize(
-        ("object_to_fail", "method_to_fail"),
-        [
-            (S3Connector, "check_bucket_exists"),
-            (S3Connector, "update_with_key"),
-            (S3Connector, "check_object_exists"),
-            (SharePointConnector, "check_object_exists"),
-        ],
-    )
-    def test_upload_sharepoint_validate_plans_invalid(
-        self,
-        object_to_fail: type[SharePointConnector | S3Connector],
-        method_to_fail: str,
-        s3: boto3.client,
-    ) -> None:
-        """Test that validate_plans raises UploadError for invalid plans."""
-        invalid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_sp_engine = self.setup_engine("sharepoint", s3)
-
-        with (
-            patch.object(S3Connector, "check_bucket_exists"),
-            patch.object(S3Connector, "update_with_key"),
-            patch.object(S3Connector, "check_object_exists"),
-            patch.object(SharePointConnector, "check_object_exists"),
-            patch.object(
-                object_to_fail,
-                method_to_fail,
-                side_effect=UploadError("Validation failed"),
-            ),
-            pytest.raises(UploadError) as exc_info,
-        ):
-            upload_sp_engine.validate_plans([invalid_plan])
-
-        assert "Validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
-
-    def test_upload_sharepoint_validation_plans_multi_invalid(
-        self, s3: boto3.client
-    ) -> None:
-        """Test that validate_plans raises UploadError for multiple invalid plans."""
-        invalid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_sp_engine = self.setup_engine("sharepoint", s3)
-
-        with (
-            patch.object(
-                S3Connector,
-                "check_bucket_exists",
-                side_effect=UploadError("S3 validation failed"),
-            ),
-            patch.object(
-                SharePointConnector,
-                "check_object_exists",
-                side_effect=UploadError("SharePoint validation failed"),
-            ),
-            patch.object(S3Connector, "update_with_key"),
-            patch.object(S3Connector, "check_object_exists"),
-            pytest.raises(UploadError) as exc_info,
-        ):
-            upload_sp_engine.validate_plans([invalid_plan])
-
-        assert "S3 validation failed" in str(exc_info.value)
-        assert "SharePoint validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
-
     @pytest.mark.parametrize(
         ("exp_delete_calls", "delete"),
         [
@@ -215,12 +213,18 @@ class TestEngines:
             patch.object(
                 engine.UploadToSharePointEngine, "delete_source_file"
             ) as mock_delete_object,
+            patch.object(
+                engine.UploadToSharePointEngine, "validate_plan"
+            ) as mock_validate,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
             upload_sp_engine.run(plan.source, plan.destination, delete=delete)
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
         assert mock_delete_object.call_count == exp_delete_calls
 
     def test_upload_sharepoint_run_no_delete_option(self, s3: boto3.client) -> None:
@@ -240,12 +244,18 @@ class TestEngines:
             patch.object(
                 engine.UploadToSharePointEngine, "delete_source_file"
             ) as mock_delete_object,
+            patch.object(
+                engine.UploadToSharePointEngine, "validate_plan"
+            ) as mock_validate,
         ):
             upload_sharepoint_engine = self.setup_engine("sharepoint", s3)
             upload_sharepoint_engine.run(plan.source, plan.destination)
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
         assert mock_delete_object.call_count == 0
 
     def test_upload_s3_list_source_files(self, s3: boto3.client) -> None:
@@ -258,6 +268,77 @@ class TestEngines:
 
         assert files == ["file1.csv", "file2.csv"]
         mock_list.assert_called_once_with()
+
+    def test_upload_s3_validate_plan_valid(self, s3: boto3.client) -> None:
+        """Test that validate_plan returns True for valid plans."""
+        upload_s3_engine = self.setup_engine("s3", s3)
+
+        with (
+            patch.object(S3Connector, "check_bucket_exists"),
+            patch.object(SharePointConnector, "check_object_exists"),
+        ):
+            upload_s3_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
+        assert True  #  No exceptions raised
+
+    @pytest.mark.parametrize(
+        ("object_to_fail", "method_to_fail"),
+        [
+            (S3Connector, "check_bucket_exists"),
+            (SharePointConnector, "check_object_exists"),
+        ],
+    )
+    def test_upload_s3_validate_plan_invalid(
+        self,
+        object_to_fail: type[SharePointConnector | S3Connector],
+        method_to_fail: str,
+        s3: boto3.client,
+    ) -> None:
+        """Test that validate_plan raises UploadError for an invalid plan."""
+        upload_s3_engine = self.setup_engine("s3", s3)
+
+        with (
+            patch.object(S3Connector, "check_bucket_exists"),
+            patch.object(SharePointConnector, "check_object_exists"),
+            patch.object(
+                object_to_fail,
+                method_to_fail,
+                side_effect=UploadError("Validation failed"),
+            ),
+            pytest.raises(UploadError) as exc_info,
+        ):
+            upload_s3_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
+
+        assert "Validation failed" in str(exc_info.value)
+        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
+
+    def test_upload_s3_validation_plan_multi_invalid(self, s3: boto3.client) -> None:
+        """Test that validate_plan raises UploadError for multiple issues."""
+        upload_s3_engine = self.setup_engine("s3", s3)
+
+        with (
+            patch.object(
+                S3Connector,
+                "check_bucket_exists",
+                side_effect=UploadError("S3 validation failed"),
+            ),
+            patch.object(
+                SharePointConnector,
+                "check_object_exists",
+                side_effect=UploadError("SharePoint validation failed"),
+            ),
+            pytest.raises(UploadError) as exc_info,
+        ):
+            upload_s3_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
+
+        assert "S3 validation failed" in str(exc_info.value)
+        assert "SharePoint validation failed" in str(exc_info.value)
+        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
 
     def test_upload_s3_download_file(self, s3: boto3.client) -> None:
         """Test that download_file fetches the correct bytes from SharePoint."""
@@ -306,80 +387,6 @@ class TestEngines:
         mock_update_filepath.assert_called_once_with(SP_FILE_PATH)
         mock_delete_object.assert_called_once_with()
 
-    def test_upload_s3_validate_plans_valid(self, s3: boto3.client) -> None:
-        """Test that validate_plans returns True for valid plans."""
-        valid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_s3_engine = self.setup_engine("s3", s3)
-
-        with (
-            patch.object(S3Connector, "check_bucket_exists"),
-            patch.object(SharePointConnector, "check_object_exists"),
-        ):
-            upload_s3_engine.validate_plans([valid_plan])
-        assert True  #  No exceptions raised
-
-    @pytest.mark.parametrize(
-        ("object_to_fail", "method_to_fail"),
-        [
-            (S3Connector, "check_bucket_exists"),
-            (SharePointConnector, "check_object_exists"),
-        ],
-    )
-    def test_upload_s3_validate_plans_invalid(
-        self,
-        object_to_fail: type[SharePointConnector | S3Connector],
-        method_to_fail: str,
-        s3: boto3.client,
-    ) -> None:
-        """Test that validate_plans raises UploadError for invalid plans."""
-        invalid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_s3_engine = self.setup_engine("s3", s3)
-
-        with (
-            patch.object(S3Connector, "check_bucket_exists"),
-            patch.object(SharePointConnector, "check_object_exists"),
-            patch.object(
-                object_to_fail,
-                method_to_fail,
-                side_effect=UploadError("Validation failed"),
-            ),
-            pytest.raises(UploadError) as exc_info,
-        ):
-            upload_s3_engine.validate_plans([invalid_plan])
-
-        assert "Validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 1 error(s)" in str(exc_info.value)
-
-    def test_upload_s3_validation_plans_multi_invalid(self, s3: boto3.client) -> None:
-        """Test that validate_plans raises UploadError for multiple invalid plans."""
-        invalid_plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
-        upload_s3_engine = self.setup_engine("s3", s3)
-
-        with (
-            patch.object(
-                S3Connector,
-                "check_bucket_exists",
-                side_effect=UploadError("S3 validation failed"),
-            ),
-            patch.object(
-                SharePointConnector,
-                "check_object_exists",
-                side_effect=UploadError("SharePoint validation failed"),
-            ),
-            pytest.raises(UploadError) as exc_info,
-        ):
-            upload_s3_engine.validate_plans([invalid_plan])
-
-        assert "S3 validation failed" in str(exc_info.value)
-        assert "SharePoint validation failed" in str(exc_info.value)
-        assert "Pre-flight validation failed with 2 error(s)" in str(exc_info.value)
-
     @pytest.mark.parametrize(
         ("exp_delete_calls", "delete"),
         [
@@ -404,19 +411,20 @@ class TestEngines:
             patch.object(
                 engine.UploadToS3Engine, "delete_source_file"
             ) as mock_delete_object,
+            patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
             upload_s3_engine.run(plan.source, plan.destination, delete=delete)
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
         assert mock_delete_object.call_count == exp_delete_calls
 
     def test_upload_s3_run_no_delete_option(self, s3: boto3.client) -> None:
         """Test that run executes the upload process without errors."""
-        plan = MovementPlan(
-            source="reports/2026/file.csv", destination="path/to/file.csv"
-        )
         with (
             patch.object(
                 engine.UploadToS3Engine,
@@ -427,10 +435,16 @@ class TestEngines:
             patch.object(
                 engine.UploadToS3Engine, "delete_source_file"
             ) as mock_delete_object,
+            patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.run(plan.source, plan.destination)
+            upload_s3_engine.run(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
 
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(b"file content", "path/to/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
         assert mock_delete_object.call_count == 0
