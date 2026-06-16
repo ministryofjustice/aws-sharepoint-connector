@@ -4,13 +4,12 @@ from typing import Literal
 
 from connector import utils
 from connector.config import (
-    MovementPlan,
-    MovementPlanDict,
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
 )
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from connector.exceptions import InvalidModeError
 
 log = utils.setup_logger()
 
@@ -29,9 +28,24 @@ def create_engine(
 ) -> UploadToSharePointEngine | UploadToS3Engine:
     """Create an engine instance for transferring files between S3 and SharePoint.
 
-    Authenticates to Azure Graph API and validates all configuration at construction
-    time. The returned engine can then be used to transfer individual files via
-    ``engine.run(source, destination)``.
+    Available engines are ``UploadToS3Engine`` and ``UploadToSharePointEngine``.
+    Each is configured with the same SharePoint site, SharePoint library, and S3 bucket.
+    The engine will parse one as the source and one as the destination.
+
+    Make use of the 'list_source_files' method to what files are located in the source
+    and amend according to your needs.
+
+    Iterate over each file to be transferred and call the 'run' method with the
+    source and destination paths to perform the transfer. An s3 source/destination is
+    the full s3 key (excluding the bucket name) and a SharePoint source/destination is
+    the full path to the file (excluding the site and library).
+
+    The 'run' method validates that the configuration is correct (expected bucket,
+    folders and files exist). Then downloads the file from the source and uploads it to
+    the destination.
+
+    Optionally delete the source files after successfully transferring them by using
+    the optional 'delete' argument in the 'run' method.
 
     Args:
         mode (Literal["write_to_s3", "write_to_sharepoint"]): Transfer direction.
@@ -51,10 +65,19 @@ def create_engine(
         ValueError: If ``mode`` is not one of the valid transfer directions.
         ValidationError: If any configuration value fails Pydantic validation.
 
+    Example:
+        >>> eng = create_engine(
+        ...     mode="write_to_s3",
+        ...     sp_site="analytics-site",
+        ...     sp_library="Documents",
+        ...     s3_bucket="my-destination-bucket",
+        ... )
+        >>> eng.run(source="reports/2026/file1.csv", destination="path/to/file1.csv")
+
     """
     if mode not in MODE_MAP:
         err = f"Invalid mode '{mode}'. Valid modes: {list(MODE_MAP)}"
-        raise ValueError(err)
+        raise InvalidModeError(err)
 
     secrets = SecretConfig()  # type: ignore[call-arg]
     library = SharePointLibrary(site=sp_site, library=sp_library)
@@ -64,40 +87,3 @@ def create_engine(
 
     engine_class = MODE_MAP[mode]
     return engine_class(secrets=secrets, library=library, bucket=bucket)
-
-
-def create_movement_plan(
-    data_movement_plan: list[MovementPlanDict],
-) -> list[MovementPlan]:
-    """Convert a list of movement plan dicts into validated ``MovementPlan`` objects.
-
-    Each dict must contain ``source`` and ``destination`` string keys. In
-    ``write_to_s3`` mode, ``source`` is a SharePoint file path and ``destination``
-    is an S3 key. In ``write_to_sharepoint`` mode the roles are reversed.
-
-    Args:
-        data_movement_plan (list[MovementPlanDict]):
-            A list of ``{"source": str, "destination": str}`` dicts describing
-            the files to transfer.
-
-    Returns:
-        list[MovementPlan]:
-            A list of validated ``MovementPlan`` instances.
-
-    Raises:
-        ValidationError: If any dict is missing required fields.
-
-    Example::
-
-        data_movement_plan = [
-            {
-                "source": "reports/2026/daily_report.csv",
-                "destination": "path/to/daily_report.csv",
-            }
-        ]
-
-    """
-    return [
-        MovementPlan(source=plan["source"], destination=plan["destination"])
-        for plan in data_movement_plan
-    ]

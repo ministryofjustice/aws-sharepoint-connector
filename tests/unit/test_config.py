@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from connector.config import (
-    MovementPlan,
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
@@ -76,13 +75,3 @@ def test_secretconfig_load_from_env_vars() -> None:
     )
     assert secrets.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
     assert secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
-
-
-def test_movementplan_valid_values() -> None:
-    """Test that MovementPlan stores source and destination strings."""
-    plan = MovementPlan(
-        source="reports/2026/file.csv",
-        destination="path/to/file.csv",
-    )
-    assert plan.source == "reports/2026/file.csv"
-    assert plan.destination == "path/to/file.csv"

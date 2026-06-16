@@ -5,7 +5,7 @@ from typing import Any
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
 
-from connector.exceptions import UploadError
+from connector.exceptions import FileSizeMismatchError, ProcessingError
 from connector.utils import setup_logger
 
 log = setup_logger()
@@ -38,7 +38,7 @@ class S3Connector(BaseModel):
             list[str]: All object keys in the bucket matching the given prefix.
 
         Raises:
-            UploadError: If the listing request fails.
+            ProcessingError: If the listing request fails.
 
         """
         log.info("Listing objects in s3://%s/%s...", self.bucket, prefix)
@@ -55,7 +55,7 @@ class S3Connector(BaseModel):
                 kwargs["ContinuationToken"] = response["NextContinuationToken"]
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to list objects in s3://{self.bucket}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
         log.info("Found %d object(s) in s3://%s/%s.", len(keys), self.bucket, prefix)
         return keys
 
@@ -66,7 +66,7 @@ class S3Connector(BaseModel):
             bytes: The content of the S3 object as bytes.
 
         Raises:
-            UploadError: If the download fails.
+            ProcessingError: If the download fails.
 
         """
         try:
@@ -74,7 +74,7 @@ class S3Connector(BaseModel):
             return obj["Body"].read()  # type: ignore[no-any-return]
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to download s3://{self.bucket}/{self.key}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
 
     def upload_to_s3(self, data: bytes) -> None:
         """Upload data to an S3 bucket.
@@ -85,12 +85,15 @@ class S3Connector(BaseModel):
         Returns:
             None
 
+        Raises:
+            ProcessingError: If the upload fails.
+
         """
         try:
             self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to upload object to s3://{self.bucket}/{self.key}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
 
     def verify_uploaded_object(self, expected_size: int) -> None:
         """Verify object exists in S3 and matches expected byte size.
@@ -99,7 +102,8 @@ class S3Connector(BaseModel):
             expected_size (int): The expected size of the uploaded object in bytes.
 
         Raises:
-            UploadError: If the object cannot be retrieved or the size does not match.
+            FileSizeMismatchError: If the object size does not match the expected size.
+            ProcessingError: If the object cannot be retrieved.
 
         """
         try:
@@ -109,7 +113,7 @@ class S3Connector(BaseModel):
                 "Failed to verify uploaded S3 object "
                 f"s3://{self.bucket}/{self.key}: {exc}"
             )
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
 
         actual_size = metadata.get("ContentLength")
         if actual_size != expected_size:
@@ -118,13 +122,13 @@ class S3Connector(BaseModel):
                 f"s3://{self.bucket}/{self.key}: expected {expected_size} bytes, "
                 f"got {actual_size} bytes"
             )
-            raise UploadError(err)
+            raise FileSizeMismatchError(err)
 
     def check_bucket_exists(self) -> None:
         """Check that the S3 bucket exists and is accessible.
 
         Raises:
-            UploadError: If the bucket does not exist or access is denied.
+            ProcessingError: If the bucket does not exist or access is denied.
 
         """
         try:
@@ -139,16 +143,16 @@ class S3Connector(BaseModel):
                 )
             else:
                 err = f"Failed to access S3 bucket '{self.bucket}': {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
         except BotoCoreError as exc:
             err = f"Failed to access S3 bucket '{self.bucket}': {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
 
     def check_object_exists(self) -> None:
         """Check that the S3 object exists and is accessible.
 
         Raises:
-            UploadError: If the object does not exist or access is denied.
+            ProcessingError: If the object does not exist or access is denied.
 
         """
         try:
@@ -164,20 +168,20 @@ class S3Connector(BaseModel):
                 )
             else:
                 err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
         except BotoCoreError as exc:
             err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc
 
     def delete_object(self) -> None:
         """Delete the S3 object specified by the current bucket and key.
 
         Raises:
-            UploadError: If the delete operation fails.
+            ProcessingError: If the delete operation fails.
 
         """
         try:
             self.client.delete_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to delete s3://{self.bucket}/{self.key}: {exc}"
-            raise UploadError(err) from exc
+            raise ProcessingError(err) from exc

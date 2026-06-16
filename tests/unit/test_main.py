@@ -1,4 +1,4 @@
-"""Unit tests for create_engine() and create_movement_plan() in main.py."""
+"""Unit tests for create_engine() in main.py."""
 
 from collections.abc import Generator
 from unittest.mock import patch
@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from connector import engine as engine_module
-from connector.config import MovementPlan
-from connector.main import create_engine, create_movement_plan
+from connector.exceptions import InvalidModeError
+from connector.main import create_engine
 
 
 @pytest.fixture(autouse=True)
@@ -32,30 +32,12 @@ class TestCreateEngine:
         )
         assert isinstance(eng, engine_module.UploadToSharePointEngine)
 
-    def test_invalid_mode_raises_value_error(self) -> None:
-        """Test that an unrecognised mode raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid mode"):
+    def test_invalid_mode(self) -> None:
+        """Test that an unrecognised mode raises InvalidModeError."""
+        with pytest.raises(InvalidModeError, match="Invalid mode"):
             create_engine(
                 "invalid_mode",  # type: ignore[arg-type]
                 "analytics-site",
                 "Documents",
                 "my-bucket",
             )
-
-
-def test_create_movement_plan() -> None:
-    """Test that the returned list contains MovementPlan instances."""
-    plans = create_movement_plan(
-        [
-            {
-                "source": "reports/2026/file1.csv",
-                "destination": "path/to/file1.csv",
-            },
-            {
-                "source": "reports/2026/file2.csv",
-                "destination": "path/to/file2.csv",
-            },
-        ]
-    )
-    assert len(plans) == 2
-    assert all(isinstance(p, MovementPlan) for p in plans)

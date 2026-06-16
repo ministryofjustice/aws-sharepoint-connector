@@ -53,7 +53,24 @@ def request_with_retry(
     max_attempts: int = 3,
     **kwargs: Any,  # noqa: ANN401
 ) -> requests.Response:
-    """Issue a request with bounded retries for transient failures."""
+    """Issue a request with bounded retries for transient failures.
+
+    Args:
+        method (Literal["GET", "POST", "DELETE"]): The HTTP method to use
+        url (str): The URL to send the request to.
+        max_attempts (int, optional): The maximum number of attempts to make.
+            Defaults to 3.
+        **kwargs: Additional arguments to pass to the request function.
+
+    Returns:
+        requests.Response: The response object from the request.
+
+    Raises:
+        ValueError: If an unsupported HTTP method is provided.
+        requests.RequestException: If the request fails after the maximum
+            number of attempts.
+
+    """
     if method == "GET":
         request_fn: Callable[..., requests.Response] = requests.get
     elif method == "POST":
