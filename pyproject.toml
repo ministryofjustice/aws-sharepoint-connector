@@ -4,24 +4,30 @@ build-backend = "pdm.backend"
 
 [project]
 name = "aws-sharepoint-connector"
-version = "0.1.0"
+version = "1.2.0"
 description = "Provides a connector via Graph API between AWS and SharePoint"
+authors = [
+    { name = "Philip Sinfield"},
+    { name = "Guy Wheeler"}]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-identity>=1.24.0",
-    "boto3>=1.40.8",
+    "boto3>=1.43.22",
     "pydantic-settings>=2.11.0",
     "pydantic>=2.12.3",
     "requests>=2.32.4",
     "types-requests>=2.33.0.20260408",
 ]
 
+[project.urls]
+Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
+
 [dependency-groups]
 dev = [
     "mypy>=1.20.1",
-    "ruff>=0.15.11",
+    "ruff>=0.15.12",
 ]
 test = [
     "moto>=5.2.0",
@@ -36,9 +42,6 @@ package = true
 [tool.setuptools.packages.find]
 where = ["src", "."]
 
-[project.scripts]
-connector = "connector.main:main"
-
 [tool.mypy]
 strict = true
 disallow_untyped_defs = true
@@ -50,7 +53,7 @@ mypy_path = "src"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=term-missing"
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
 
 [tool.ruff.lint]
 select = ["ALL"]

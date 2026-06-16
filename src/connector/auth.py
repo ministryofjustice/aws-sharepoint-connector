@@ -1,10 +1,11 @@
 """Authentication utilities for the SharePoint connector."""
 
-import requests
-from azure.identity import ClientSecretCredential
+from azure.core.exceptions import ClientAuthenticationError
+from azure.identity import ClientSecretCredential, CredentialUnavailableError
 
 from connector.constants import SCOPE
-from connector.exceptions import NoLibraryError
+from connector.exceptions import NoLibraryError, ProcessingError
+from connector.utils import request_with_retry
 
 
 def get_azure_token(tenant_id: str, client_id: str, client_secret: str) -> str:
@@ -19,8 +20,12 @@ def get_azure_token(tenant_id: str, client_id: str, client_secret: str) -> str:
         str: The Azure token.
 
     """
-    credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-    return credential.get_token(SCOPE).token
+    try:
+        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+        return credential.get_token(SCOPE).token
+    except (CredentialUnavailableError, ClientAuthenticationError) as exc:
+        err = "Failed to obtain Azure token. Please check your credentials."
+        raise ProcessingError(err) from exc
 
 
 def get_drive_id(site_id: str, library_name: str, headers: dict[str, str]) -> str:
@@ -40,7 +45,7 @@ def get_drive_id(site_id: str, library_name: str, headers: dict[str, str]) -> st
 
     """
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
-    response = requests.get(url, headers=headers, timeout=30)
+    response = request_with_retry("GET", url, headers=headers, timeout=30)
     response.raise_for_status()
     drives = response.json().get("value", [])
     for drive in drives:

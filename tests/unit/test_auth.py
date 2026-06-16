@@ -6,44 +6,44 @@ from unittest.mock import patch
 import pytest
 
 from connector import auth
-from connector.config import AppConfig
+from connector.config import SecretConfig
 from connector.exceptions import NoLibraryError
 from tests import test_utils as utils
 
+SP_SITE_ID = utils.SP_SITE  # used as fake site_id value in drive tests
+SP_LIBRARY = utils.SP_LIBRARY  # "Documents"
+
 
 def test_get_azure_token() -> None:
-    """Test that get_azure_token returns a token."""
-    config = AppConfig()  # type: ignore[call-arg]
+    """Test that get_azure_token returns the expected token string."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
 
     with patch(
         "azure.identity.ClientSecretCredential.get_token",
         side_effect=utils.mock_get_token,
     ):
         token = auth.get_azure_token(
-            str(config.SECRET_AZURE_TENANT_ID),
-            config.SECRET_AZURE_CLIENT_ID.get_secret_value(),
-            config.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
+            str(secrets.SECRET_AZURE_TENANT_ID),
+            secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
+            secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
-    assert token == "fake-token"  # noqa: S105  # nosec: B105 # nosec: B106
+    assert token == "fake-token"  # noqa: S105  # nosec: B105
 
 
 def test_get_drive_id_success() -> None:
     """Test that get_drive_id returns the correct drive ID."""
-    config = AppConfig()  # type: ignore[call-arg]
-    site_id = config.SP_SITE_NAME
-    library_name = config.SP_LIBRARY_NAME
     headers = {"Authorization": "Bearer fake-token"}
 
     with patch(
         "requests.get", return_value=utils.mock_drive_id_response("complete")
     ) as mock_get:
-        drive_id = auth.get_drive_id(site_id, library_name, headers)
+        drive_id = auth.get_drive_id(SP_SITE_ID, SP_LIBRARY, headers)
 
     assert drive_id == "fake-drive-id"
     assert mock_get.call_count == 1
     assert (
         mock_get.call_args[0][0]
-        == f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
+        == f"https://graph.microsoft.com/v1.0/sites/{SP_SITE_ID}/drives"
     )
     assert mock_get.call_args[1]["headers"] == headers
     assert mock_get.call_args[1]["timeout"] == 30
@@ -53,11 +53,10 @@ def test_get_drive_id_success() -> None:
     "content",
     ["no_drives", "no_value"],
 )
-def test_get_drive_id_empty(content: Literal["no_drives", "no_value"]) -> None:
-    """Test that get_drive_id raises a ValueError when the response is empty."""
-    config = AppConfig()  # type: ignore[call-arg]
-    site_id = config.SP_SITE_NAME
-    library_name = config.SP_LIBRARY_NAME
+def test_get_drive_id_library_not_found_raises(
+    content: Literal["no_drives", "no_value"],
+) -> None:
+    """Test that get_drive_id raises NoLibraryError when no matching drive exists."""
     headers = {"Authorization": "Bearer fake-token"}
 
     with (
@@ -66,11 +65,12 @@ def test_get_drive_id_empty(content: Literal["no_drives", "no_value"]) -> None:
         ) as mock_get,
         pytest.raises(NoLibraryError),
     ):
-        auth.get_drive_id(site_id, library_name, headers)
+        auth.get_drive_id(SP_SITE_ID, SP_LIBRARY, headers)
+
     assert mock_get.call_count == 1
     assert (
         mock_get.call_args[0][0]
-        == f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives"
+        == f"https://graph.microsoft.com/v1.0/sites/{SP_SITE_ID}/drives"
     )
     assert mock_get.call_args[1]["headers"] == headers
     assert mock_get.call_args[1]["timeout"] == 30

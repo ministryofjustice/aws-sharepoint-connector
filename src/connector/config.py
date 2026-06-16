@@ -1,22 +1,99 @@
-"""Config module.
+"""Configuration models for the connection configurations and secrets."""
 
-This file defines the AppConfig class, which loads and validates
-all environment-based settings — including
-Azure AD credentials, SharePoint settings, and S3 information.
-
-It uses Pydantic's `BaseSettings` to automatically load values from:
-  - Environment variables, or
-  - A `.env` file in the project root (for local development)
-"""
-
-from typing import Literal
 from uuid import UUID
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppConfig(BaseSettings):
+class SharePointLibrary(BaseSettings):
+    """Configuration for a SharePoint document library.
+
+    Attributes:
+        site (str): The source/target SharePoint site name (without URL prefix).
+        library (str): The source/target document library name.
+
+    Example::
+
+        # For a file at:
+        # https://justiceuk.sharepoint.com/sites/analytics-site/Documents/...
+        SharePointLibrary(site='analytics-site', library='Documents')
+
+    """
+
+    site: str
+    library: str
+
+    @field_validator("site")
+    @classmethod
+    def validate_site(cls, v: str) -> str:
+        """Validate that the SharePoint site name is valid.
+
+        - Is a non-empty string
+        - Does not include the "https://justiceuk.sharepoint.com/sites/" prefix
+        """
+        if not v:
+            err = "site must be a non-empty string."
+            raise ValueError(err)
+        if v.startswith("https://justiceuk.sharepoint.com/sites/"):
+            err = (
+                "site should not include the"
+                " 'https://justiceuk.sharepoint.com/sites/' prefix."
+            )
+            raise ValueError(err)
+        return v
+
+    @field_validator("library")
+    @classmethod
+    def validate_library(cls, v: str) -> str:
+        """Validate that the SharePoint library name is valid.
+
+        - Is a non-empty string
+        """
+        if not v:
+            err = "library must be a non-empty string."
+            raise ValueError(err)
+        return v
+
+
+class S3Bucket(BaseSettings):
+    """Configuration for an S3 bucket.
+
+    Attributes:
+        bucket (str): The source/target S3 bucket name. Do not include the
+            ``s3://`` prefix or a trailing slash.
+
+    Example::
+
+        # For s3://my-bucket/path/to/file1.csv
+        S3Bucket(bucket='my-bucket')
+
+    """
+
+    bucket: str
+
+    @field_validator("bucket")
+    @classmethod
+    def validate_bucket(cls, v: str) -> str:
+        """Validate that the bucket name is valid.
+
+        - Is a non-empty string
+        - Does not contain the 's3://' prefix
+        - Does not end with a slash
+        """
+        if not v:
+            err = "bucket must be a non-empty string."
+            raise ValueError(err)
+        if v.startswith("s3://"):
+            err = "bucket should not include the 's3://' prefix."
+            raise ValueError(err)
+        if v.endswith("/"):
+            err = "bucket name should not end with a slash."
+            raise ValueError(err)
+        return v
+
+
+class SecretConfig(BaseSettings):
     """Application configuration container.
 
     Each field corresponds to a setting that can be provided either
@@ -28,36 +105,8 @@ class AppConfig(BaseSettings):
     SECRET_AZURE_CLIENT_ID: SecretStr
     SECRET_AZURE_CLIENT_SECRET: SecretStr
 
-    # Used for identifying where to read from / write to in SharePoint.
-    SP_SITE_NAME: str
-    SP_LIBRARY_NAME: str
-    SP_FOLDER_PATH: str
-    SP_FILE_NAME: str
-
-    # The S3 bucket and key to read from / write to.
-    S3_BUCKET: str
-    FILE_KEY: str
-
-    # upload to S3 or SharePoint
-    MODE: Literal["write_to_s3", "write_to_sharepoint"]
-
-    # This tells Pydantic to read values from a .env file by default.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-    @field_validator("SP_FOLDER_PATH")
-    @classmethod
-    def ensure_trailing_slash(cls, v: str) -> str:
-        """Ensure the SharePoint folder path ends with a slash.
-
-        Args:
-            v (str): The folder path to validate.
-
-        Returns:
-            str: The validated folder path, guaranteed to end with a slash.
-
-        """
-        return v if v.endswith("/") else f"{v}/"

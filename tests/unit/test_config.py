@@ -1,23 +1,77 @@
 """Unit tests for the config module."""
 
-import os
 from uuid import UUID
 
-from connector.config import AppConfig
+import pytest
+from pydantic import ValidationError
+
+from connector.config import (
+    S3Bucket,
+    SecretConfig,
+    SharePointLibrary,
+)
 
 
-def test_config_loading() -> None:
-    """Test that the AppConfig class correctly loads from environment variables."""
-    os.environ["SP_FOLDER_PATH"] = "fake/folder/path"
-    config = AppConfig()  # type: ignore[call-arg]
+def test_sharepointlibrary_valid_values() -> None:
+    """Test that SharePointLibrary can be instantiated with valid fields."""
+    lib = SharePointLibrary(site="analytics-site", library="Documents")
+    assert lib.site == "analytics-site"
+    assert lib.library == "Documents"
 
-    assert UUID("12345678-9012-3456-7890-123456789012") == config.SECRET_AZURE_TENANT_ID
-    assert config.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
-    assert config.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
-    assert config.SP_SITE_NAME == "fake-site-name"
-    assert config.SP_LIBRARY_NAME == "Documents"
-    assert config.SP_FOLDER_PATH == "fake/folder/path/"
-    assert config.SP_FILE_NAME == "fake-file.csv"
-    assert config.S3_BUCKET == "fake-bucket"
-    assert config.FILE_KEY == "fake-file.csv"
-    assert config.MODE == "write_to_s3"
+
+@pytest.mark.parametrize(
+    ("invalid_site", "expected_error"),
+    [
+        ("", "site must be a non-empty string"),
+        (
+            "https://justiceuk.sharepoint.com/sites/analytics-site",
+            "site should not include the 'https://justiceuk.sharepoint.com/sites/'",
+        ),
+    ],
+)
+def test_sharepointlibrary_invalid_sites(
+    invalid_site: str, expected_error: str
+) -> None:
+    """Test that invalid site values raise ValidationError with expected message."""
+    with pytest.raises(ValidationError, match=expected_error) as exc_info:
+        SharePointLibrary(site=invalid_site, library="Documents")
+
+    assert expected_error in str(exc_info.value)
+
+
+def test_sharepointlibrary_empty_library() -> None:
+    """Test that an empty library raises a validation error."""
+    with pytest.raises(ValidationError, match="library must be a non-empty string"):
+        SharePointLibrary(site="analytics-site", library="")
+
+
+def test_s3bucket_valid_values() -> None:
+    """Test that S3Bucket can be instantiated with a valid bucket name."""
+    bucket = S3Bucket(bucket="my-bucket")
+    assert bucket.bucket == "my-bucket"
+
+
+@pytest.mark.parametrize(
+    ("invalid_bucket", "expected_error"),
+    [
+        ("", "bucket must be a non-empty string"),
+        ("s3://my-bucket", "should not include the 's3://' prefix"),
+        ("my-bucket/", "should not end with a slash"),
+    ],
+)
+def test_s3bucket_invalid_buckets(invalid_bucket: str, expected_error: str) -> None:
+    """Test that invalid bucket values raise ValidationError with expected message."""
+    with pytest.raises(ValidationError, match=expected_error) as exc_info:
+        S3Bucket(bucket=invalid_bucket)
+
+    assert expected_error in str(exc_info.value)
+
+
+def test_secretconfig_load_from_env_vars() -> None:
+    """Test that SecretConfig correctly loads environment variables."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    assert (
+        UUID("12345678-9012-3456-7890-123456789012") == secrets.SECRET_AZURE_TENANT_ID
+    )
+    assert secrets.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
+    assert secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
