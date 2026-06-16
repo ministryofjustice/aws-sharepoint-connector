@@ -217,14 +217,12 @@ class SharePointConnector(BaseModel):
         self.download_url = f"{self.base_url}/content"
 
     def list_files(self) -> list[str]:
-        """List files at the root of the SharePoint library.
+        """List all files in the SharePoint library, including subfolders.
 
-        Only lists items directly under the library root, not files within
-        subfolders. Handles pagination automatically.
+        Handles pagination automatically at every folder level.
 
         Returns:
-            list[str]: File names at the root of the library. To construct a
-                full source path for a file, join with the containing folder path.
+            list[str]: File paths relative to the library root.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -235,27 +233,47 @@ class SharePointConnector(BaseModel):
             self.library.library,
             self.library.site,
         )
-        next_url: str | None = (
+        root_url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
             f"/root/children?$select=name,folder"
         )
         file_paths: list[str] = []
+
+        folder_paths: list[str] = [""]
+
+        def children_url(folder_path: str) -> str:
+            if not folder_path:
+                return root_url
+            encoded_path = quote(folder_path, safe="/")
+            return (
+                f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+                f"/root:/{encoded_path}:/children?$select=name,folder"
+            )
+
         try:
-            while next_url:
-                resp = request_with_retry(
-                    "GET",
-                    next_url,
-                    headers=self.headers,
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                file_paths.extend(
-                    item["name"]
-                    for item in data.get("value", [])
-                    if "folder" not in item
-                )
-                next_url = data.get("@odata.nextLink")
+            while folder_paths:
+                folder_path = folder_paths.pop(0)
+                next_url: str | None = children_url(folder_path)
+
+                while next_url:
+                    resp = request_with_retry(
+                        "GET",
+                        next_url,
+                        headers=self.headers,
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    for item in data.get("value", []):
+                        name = item["name"]
+                        item_path = f"{folder_path}/{name}" if folder_path else name
+                        if "folder" in item:
+                            folder_paths.append(item_path)
+                        else:
+                            file_paths.append(item_path)
+
+                    next_url = data.get("@odata.nextLink")
         except requests.RequestException as exc:
             err = (
                 f"Failed to list files in SharePoint library '{self.library.library}' "

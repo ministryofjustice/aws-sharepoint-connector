@@ -234,12 +234,15 @@ def test_set_download_url() -> None:
 def test_list_files_success() -> None:
     """list_files returns file names from the library root, excluding folders."""
     connector = make_connector()
+    root_page = utils.mock_list_files_response(
+        file_names=["report.csv", "summary.xlsx"],
+        folder_names=["archive"],
+    )
+    archive_page = utils.mock_list_files_response(file_names=[])
+
     with patch(
         "connector.sharepoint.requests.get",
-        return_value=utils.mock_list_files_response(
-            file_names=["report.csv", "summary.xlsx"],
-            folder_names=["archive"],
-        ),
+        side_effect=[root_page, archive_page],
     ):
         result = connector.list_files()
     assert result == ["report.csv", "summary.xlsx"]
@@ -258,6 +261,26 @@ def test_list_files_pagination() -> None:
     ):
         result = connector.list_files()
     assert result == ["a.csv", "b.csv", "c.csv"]
+
+
+def test_list_files_recurses_into_folders() -> None:
+    """list_files includes files found in nested folders."""
+    root_page = utils.mock_list_files_response(
+        file_names=[],
+        folder_names=["scenario_1"],
+    )
+    child_page = utils.mock_list_files_response(
+        file_names=["a.csv", "b.csv"],
+    )
+
+    connector = make_connector()
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[root_page, child_page],
+    ):
+        result = connector.list_files()
+
+    assert result == ["scenario_1/a.csv", "scenario_1/b.csv"]
 
 
 def test_list_files_request_error() -> None:
