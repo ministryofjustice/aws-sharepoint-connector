@@ -41,6 +41,17 @@ def test_request_with_retry_post_uses_post_request_function() -> None:
     assert mock_post.call_count == 1
 
 
+def test_request_with_retry_delete_uses_delete_request_function() -> None:
+    """DELETE mode should dispatch through requests.delete."""
+    with patch(
+        "connector.utils.requests.delete", return_value=_response(204)
+    ) as mock_delete:
+        response = utils.request_with_retry("DELETE", "https://example.com")
+
+    assert response.status_code == 204
+    assert mock_delete.call_count == 1
+
+
 def test_request_with_retry_retries_on_retryable_status_code() -> None:
     """Retryable HTTP status codes trigger a retry and backoff sleep."""
     retry_code = next(iter(RETRYABLE_ERROR_CODES))

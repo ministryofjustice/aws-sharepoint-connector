@@ -57,6 +57,10 @@ class Engine(ABC):
         """Upload a file to the destination storage."""
 
     @abstractmethod
+    def delete_source_file(self, source: str) -> None:
+        """Delete a file from the source storage after successful transfer."""
+
+    @abstractmethod
     def validate_plans(self, plans: list[MovementPlan]) -> None:
         """Pre-flight check all movement plans before execution.
 
@@ -72,12 +76,13 @@ class Engine(ABC):
 
         """
 
-    def run(self, source: str, destination: str) -> None:
+    def run(self, source: str, destination: str, *, delete: bool = False) -> None:
         """Transfer a single file from source to destination storage.
 
         Args:
             source (str): Source file path (S3 key or SharePoint path).
             destination (str): Destination file path (SharePoint path or S3 key).
+            delete (bool): Whether to delete the source file after transfer.
 
         Raises:
             UploadError: If the download or upload step fails.
@@ -92,6 +97,10 @@ class Engine(ABC):
             destination,
             len(content),
         )
+        if delete:
+            log.info("Deleting source file '%s'...", source)
+            self.delete_source_file(source)
+            log.info("Source file '%s' deleted.", source)
 
 
 class UploadToSharePointEngine(Engine):
@@ -137,6 +146,13 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
         )
+
+    def delete_source_file(self, source: str) -> None:
+        """Delete a file from S3."""
+        log.info("Deleting source file s3://%s/%s...", self.bucket.bucket, source)
+        self.s3_connector.update_with_key(source)
+        self.s3_connector.delete_object()
+        log.info("Source file s3://%s/%s deleted.", self.bucket.bucket, source)
 
     def validate_plans(self, plans: list[MovementPlan]) -> None:
         """Pre-flight check all plans before execution.
@@ -246,6 +262,13 @@ class UploadToS3Engine(Engine):
         self.s3_connector.upload_to_s3(content)
         self.s3_connector.verify_uploaded_object(expected_size=len(content))
         log.info("S3 upload verification succeeded.")
+
+    def delete_source_file(self, source: str) -> None:
+        """Delete a file from SharePoint."""
+        log.info("Deleting source file '%s' from SharePoint...", source)
+        self.sharepoint_connector.update_with_file_path(source)
+        self.sharepoint_connector.delete_file()
+        log.info("Source file '%s' deleted from SharePoint.", source)
 
     def validate_plans(self, plans: list[MovementPlan]) -> None:
         """Pre-flight check all plans before execution.

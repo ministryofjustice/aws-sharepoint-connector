@@ -168,3 +168,16 @@ class S3Connector(BaseModel):
         except BotoCoreError as exc:
             err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
             raise UploadError(err) from exc
+
+    def delete_object(self) -> None:
+        """Delete the S3 object specified by the current bucket and key.
+
+        Raises:
+            UploadError: If the delete operation fails.
+
+        """
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=self.key)
+        except (BotoCoreError, ClientError) as exc:
+            err = f"Failed to delete s3://{self.bucket}/{self.key}: {exc}"
+            raise UploadError(err) from exc
