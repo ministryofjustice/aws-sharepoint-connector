@@ -94,7 +94,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "requests", specifier = ">=2.32.4" },
-    { name = "types-requests", specifier = ">=2.33.0.20260408" },
+    { name = "types-requests", specifier = ">=2.33.0.20260503" },
 ]
 
 [package.metadata.requires-dev]
