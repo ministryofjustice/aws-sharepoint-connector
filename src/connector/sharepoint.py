@@ -55,15 +55,13 @@ class SharePointConnector(BaseModel):
 
     def set_graph_headers(self) -> None:
         """Obtain Azure token and generate headers for the sharepoint App."""
-        log.info("Requesting Azure Graph API token...")
+        log.info("Authenticating SharePoint connector with Azure Graph API.")
 
         token = auth.get_azure_token(
             str(self.secrets.SECRET_AZURE_TENANT_ID),
             self.secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
             self.secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
-
-        log.info("Successfully retrieved Azure Graph API token.")
 
         self.headers = {
             "Authorization": f"Bearer {token}",
@@ -109,11 +107,6 @@ class SharePointConnector(BaseModel):
                 unreachable, or the specified library is not found on the site.
 
         """
-        log.info(
-            "Fetching drive ID for library '%s' in site '%s'...",
-            self.library.library,
-            self.library.site,
-        )
         try:
             site_id = self.get_site_id()
             drive_id = auth.get_drive_id(
@@ -122,7 +115,7 @@ class SharePointConnector(BaseModel):
                 self.headers,
             )
             log.info(
-                "Found drive ID for library '%s' in site '%s'",
+                "Resolved SharePoint drive ID for library '%s' in site '%s'.",
                 self.library.library,
                 self.library.site,
             )
@@ -174,8 +167,6 @@ class SharePointConnector(BaseModel):
                 error or if the specified library is not found on the site.
 
         """
-        log.info("Creating SharePoint upload URL...")
-
         session_body = {
             "item": {
                 "@microsoft.graph.conflictBehavior": "replace",
@@ -198,7 +189,10 @@ class SharePointConnector(BaseModel):
         session_resp.raise_for_status()
         url = session_resp.json()["uploadUrl"]
 
-        log.info("Upload session created successfully.")
+        log.info(
+            "Created SharePoint upload session for '%s'.",
+            self.file_path,
+        )
 
         self.upload_url = url
 
@@ -212,50 +206,61 @@ class SharePointConnector(BaseModel):
             None
 
         """
-        log.info("Creating SharePoint download URL...")
-
         self.download_url = f"{self.base_url}/content"
 
     def list_files(self) -> list[str]:
-        """List files at the root of the SharePoint library.
+        """List all files in the SharePoint library, including subfolders.
 
-        Only lists items directly under the library root, not files within
-        subfolders. Handles pagination automatically.
+        Handles pagination automatically at every folder level.
 
         Returns:
-            list[str]: File names at the root of the library. To construct a
-                full source path for a file, join with the containing folder path.
+            list[str]: File paths relative to the library root.
 
         Raises:
             ProcessingError: If the listing request fails.
 
         """
-        log.info(
-            "Listing files in SharePoint library '%s' on site '%s'...",
-            self.library.library,
-            self.library.site,
-        )
-        next_url: str | None = (
+        root_url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
             f"/root/children?$select=name,folder"
         )
         file_paths: list[str] = []
+
+        folder_paths: list[str] = [""]
+
+        def children_url(folder_path: str) -> str:
+            if not folder_path:
+                return root_url
+            encoded_path = quote(folder_path, safe="/")
+            return (
+                f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+                f"/root:/{encoded_path}:/children?$select=name,folder"
+            )
+
         try:
-            while next_url:
-                resp = request_with_retry(
-                    "GET",
-                    next_url,
-                    headers=self.headers,
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                file_paths.extend(
-                    item["name"]
-                    for item in data.get("value", [])
-                    if "folder" not in item
-                )
-                next_url = data.get("@odata.nextLink")
+            while folder_paths:
+                folder_path = folder_paths.pop(0)
+                next_url: str | None = children_url(folder_path)
+
+                while next_url:
+                    resp = request_with_retry(
+                        "GET",
+                        next_url,
+                        headers=self.headers,
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    for item in data.get("value", []):
+                        name = item["name"]
+                        item_path = f"{folder_path}/{name}" if folder_path else name
+                        if "folder" in item:
+                            folder_paths.append(item_path)
+                        else:
+                            file_paths.append(item_path)
+
+                    next_url = data.get("@odata.nextLink")
         except requests.RequestException as exc:
             err = (
                 f"Failed to list files in SharePoint library '{self.library.library}' "
@@ -263,7 +268,7 @@ class SharePointConnector(BaseModel):
             )
             raise ProcessingError(err) from exc
         log.info(
-            "Found %d file(s) in SharePoint library '%s' on site '%s'.",
+            "Listed %d file(s) in SharePoint library '%s' on site '%s'.",
             len(file_paths),
             self.library.library,
             self.library.site,
@@ -320,8 +325,6 @@ class SharePointConnector(BaseModel):
                 the specified file is not found in SharePoint.
 
         """
-        log.info("Fetching file from SharePoint...")
-
         try:
             file_resp = request_with_retry(
                 "GET",
@@ -378,7 +381,7 @@ class SharePointConnector(BaseModel):
             )
             raise FileSizeMismatchError(err)
         log.info(
-            "Verified uploaded file '%s' (%s bytes)",
+            "Verified SharePoint upload for '%s' (%s bytes).",
             expected_name,
             expected_size,
         )
@@ -465,10 +468,20 @@ class SharePointConnector(BaseModel):
                         f"Chunk upload failed after {MAX_CHUNK_RETRIES} retries: {exc}"
                     )
                     raise ProcessingError(err) from exc
-                log.warning("Chunk upload failed, attempting to resume...")
+                log.warning(
+                    (
+                        "SharePoint chunk upload failed due to network error;"
+                        " attempting resume (retry %s/%s).",
+                    ),
+                    chunk_retries,
+                    MAX_CHUNK_RETRIES,
+                )
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
-                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    log.info(
+                        "Resuming SharePoint chunk upload from byte %s.",
+                        f"{resume_at:,}",
+                    )
                     start = resume_at
                 file.seek(start)
                 continue
@@ -491,10 +504,21 @@ class SharePointConnector(BaseModel):
                         f" after {MAX_CHUNK_RETRIES} retries"
                     )
                     raise ProcessingError(err)
-                log.warning("Chunk upload failed, attempting to resume...")
+                log.warning(
+                    (
+                        "SharePoint chunk upload returned HTTP %s;"
+                        " attempting resume (retry %s/%s).",
+                    ),
+                    r.status_code,
+                    chunk_retries,
+                    MAX_CHUNK_RETRIES,
+                )
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
-                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    log.info(
+                        "Resuming SharePoint chunk upload from byte %s.",
+                        f"{resume_at:,}",
+                    )
                     start = resume_at
                 file.seek(start)
                 continue
@@ -504,7 +528,7 @@ class SharePointConnector(BaseModel):
             pct = int((start / file_size) * 100)
             if pct // 10 > last_logged_pct // 10:
                 log.info(
-                    "Uploaded %s/%s bytes (%s%%)",
+                    "SharePoint chunk upload progress: %s/%s bytes (%s%%).",
                     f"{start:,}",
                     f"{file_size:,}",
                     pct,
@@ -525,7 +549,6 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the file cannot be deleted due to an HTTP error.
 
         """
-        log.info("Deleting source file '%s' from SharePoint...", self.base_url)
         delete_url = f"{self.base_url}?$select=name,file"
         try:
             resp = request_with_retry(
@@ -539,6 +562,3 @@ class SharePointConnector(BaseModel):
             err = f"File not found in SharePoint for deletion: '{self.base_url}'"
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
-        log.info(
-            "Successfully deleted source file '%s' from SharePoint.", self.base_url
-        )

@@ -25,4 +25,4 @@ ENV PATH="/opt/analyticalplatform/.venv/bin:$PATH"
 RUN pwd && ls -la && \
     find . -maxdepth 2 -type f -iname "main.py" -print
 
-ENTRYPOINT ["python", "src/connector/main.py"]
+ENTRYPOINT ["python", "test.py"]

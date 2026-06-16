@@ -69,6 +69,7 @@ class S3Connector(BaseModel):
             ProcessingError: If the download fails.
 
         """
+        log.info("Downloading object from S3: s3://%s/%s", self.bucket, self.key)
         try:
             obj = self.client.get_object(Bucket=self.bucket, Key=self.key)
             return obj["Body"].read()  # type: ignore[no-any-return]
@@ -89,6 +90,12 @@ class S3Connector(BaseModel):
             ProcessingError: If the upload fails.
 
         """
+        log.info(
+            "Uploading %s bytes to S3 object s3://%s/%s",
+            len(data),
+            self.bucket,
+            self.key,
+        )
         try:
             self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
         except (BotoCoreError, ClientError) as exc:
@@ -123,6 +130,12 @@ class S3Connector(BaseModel):
                 f"got {actual_size} bytes"
             )
             raise FileSizeMismatchError(err)
+        log.info(
+            "Verified S3 upload for s3://%s/%s (%s bytes).",
+            self.bucket,
+            self.key,
+            expected_size,
+        )
 
     def check_bucket_exists(self) -> None:
         """Check that the S3 bucket exists and is accessible.
@@ -131,6 +144,7 @@ class S3Connector(BaseModel):
             ProcessingError: If the bucket does not exist or access is denied.
 
         """
+        log.info("Checking access to S3 bucket '%s'.", self.bucket)
         try:
             self.client.head_bucket(Bucket=self.bucket)
         except ClientError as exc:
@@ -155,6 +169,11 @@ class S3Connector(BaseModel):
             ProcessingError: If the object does not exist or access is denied.
 
         """
+        log.info(
+            "Checking access to S3 object s3://%s/%s.",
+            self.bucket,
+            self.key,
+        )
         try:
             self.client.head_object(Bucket=self.bucket, Key=self.key)
         except ClientError as exc:
@@ -180,6 +199,7 @@ class S3Connector(BaseModel):
             ProcessingError: If the delete operation fails.
 
         """
+        log.info("Deleting S3 object s3://%s/%s.", self.bucket, self.key)
         try:
             self.client.delete_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
