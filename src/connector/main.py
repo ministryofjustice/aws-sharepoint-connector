@@ -83,7 +83,13 @@ def create_engine(
     library = SharePointLibrary(site=sp_site, library=sp_library)
     bucket = S3Bucket(bucket=s3_bucket)
 
-    log.info("Creating engine for mode: %s", mode)
+    log.info(
+        "Creating engine for mode '%s' (site='%s', library='%s', bucket='%s').",
+        mode,
+        sp_site,
+        sp_library,
+        s3_bucket,
+    )
 
     engine_class = MODE_MAP[mode]
     return engine_class(secrets=secrets, library=library, bucket=bucket)

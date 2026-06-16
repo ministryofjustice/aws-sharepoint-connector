@@ -53,7 +53,12 @@ class Engine(ABC):
 
     def __post_init__(self) -> None:
         """Post-initialization to create S3 and SharePoint connectors."""
-        log.info("Setting up storage connectors...")
+        log.info(
+            "Initialising engine '%s' for SharePoint library '%s' and S3 bucket '%s'.",
+            self.__class__.__name__,
+            self.library.library,
+            self.bucket.bucket,
+        )
         self.s3_client = boto3.client("s3")
         self.sharepoint_connector = SharePointConnector(
             secrets=self.secrets, library=self.library
@@ -113,21 +118,23 @@ class Engine(ABC):
         Setting 'delete' will remove the source file after a successful transfer.
 
         """
-        log.info("Validating movement plan")
+        log.info(
+            "Starting transfer workflow: '%s' -> '%s' (delete_source=%s)",
+            source,
+            destination,
+            delete,
+        )
         self.validate_plan(source=source, destination=destination)
-        log.info("Starting transfer: '%s' -> '%s'", source, destination)
         content = self.download_file(source)
         self.upload_file(content, destination)
         log.info(
-            "Transfer complete: '%s' -> '%s' (%s bytes)",
+            "Transfer workflow complete: '%s' -> '%s' (%s bytes transferred)",
             source,
             destination,
             len(content),
         )
         if delete:
-            log.info("Deleting source file '%s'...", source)
             self.delete_source_file(source)
-            log.info("Source file '%s' deleted.", source)
 
 
 class UploadToSharePointEngine(Engine):
@@ -176,7 +183,11 @@ class UploadToSharePointEngine(Engine):
             ProcessingError: If one or more validation checks fail.
 
         """
-        log.info("Validating source: '%s' and destination: '%s'", source, destination)
+        log.info(
+            "Validating S3->SharePoint transfer for source '%s' and destination '%s'.",
+            source,
+            destination,
+        )
         errors: list[str] = []
 
         try:
@@ -206,7 +217,7 @@ class UploadToSharePointEngine(Engine):
             err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
             raise ProcessingError(err)
 
-        log.info("Validation passed.")
+        log.info("Validation complete for S3->SharePoint transfer plan.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from S3 and return its content as bytes.
@@ -239,7 +250,9 @@ class UploadToSharePointEngine(Engine):
 
         """
         log.info(
-            "Uploading %s bytes to SharePoint path '%s'...", len(content), destination
+            "Uploading %s bytes to SharePoint destination '%s'.",
+            len(content),
+            destination,
         )
         self.sharepoint_connector.update_with_file_path(destination)
         self.sharepoint_connector.set_upload_url()
@@ -261,10 +274,13 @@ class UploadToSharePointEngine(Engine):
             ProcessingError: If the S3 deletion fails.
 
         """
-        log.info("Deleting source file s3://%s/%s...", self.bucket.bucket, source)
+        log.info(
+            "Deleting transferred source object from S3: s3://%s/%s",
+            self.bucket.bucket,
+            source,
+        )
         self.s3_connector.update_with_key(source)
         self.s3_connector.delete_object()
-        log.info("Source file s3://%s/%s deleted.", self.bucket.bucket, source)
 
 
 class UploadToS3Engine(Engine):
@@ -315,7 +331,11 @@ class UploadToS3Engine(Engine):
             ProcessingError: If one or more validation checks fail.
 
         """
-        log.info("Validating source: '%s' and destination: '%s'", source, destination)
+        log.info(
+            "Validating SharePoint->S3 transfer for source '%s' and destination '%s'.",
+            source,
+            destination,
+        )
         errors: list[str] = []
 
         try:
@@ -333,7 +353,7 @@ class UploadToS3Engine(Engine):
             err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
             raise ProcessingError(err)
 
-        log.info("Validation passed.")
+        log.info("Validation complete for SharePoint->S3 transfer plan.")
 
     def download_file(self, source: str) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
@@ -369,7 +389,7 @@ class UploadToS3Engine(Engine):
 
         """
         log.info(
-            "Uploading %s bytes to s3://%s/%s...",
+            "Uploading %s bytes to S3 destination s3://%s/%s.",
             len(content),
             self.bucket.bucket,
             destination,
@@ -377,7 +397,6 @@ class UploadToS3Engine(Engine):
         self.s3_connector.update_with_key(destination)
         self.s3_connector.upload_to_s3(content)
         self.s3_connector.verify_uploaded_object(expected_size=len(content))
-        log.info("S3 upload verification succeeded.")
 
     def delete_source_file(self, source: str) -> None:
         """Delete a file from S3.
@@ -392,7 +411,6 @@ class UploadToS3Engine(Engine):
             ProcessingError: If the S3 deletion fails.
 
         """
-        log.info("Deleting source file '%s' from SharePoint...", source)
+        log.info("Deleting transferred source file from SharePoint: '%s'", source)
         self.sharepoint_connector.update_with_file_path(source)
         self.sharepoint_connector.delete_file()
-        log.info("Source file '%s' deleted from SharePoint.", source)

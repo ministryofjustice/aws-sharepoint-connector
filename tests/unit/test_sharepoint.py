@@ -489,7 +489,8 @@ def test_verify_uploaded_file_success(
         connector.verify_uploaded_file(expected_size=expected_size)
 
     assert (
-        f"Verified uploaded file '{file_name}' ({expected_size} bytes)" in caplog.text
+        f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
+        in caplog.text
     )
     assert mock_verify.call_count == 1
     assert mock_verify.call_args[0][0] == expected_verify_url

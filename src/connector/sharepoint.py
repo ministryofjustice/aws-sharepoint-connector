@@ -55,15 +55,13 @@ class SharePointConnector(BaseModel):
 
     def set_graph_headers(self) -> None:
         """Obtain Azure token and generate headers for the sharepoint App."""
-        log.info("Requesting Azure Graph API token...")
+        log.info("Authenticating SharePoint connector with Azure Graph API.")
 
         token = auth.get_azure_token(
             str(self.secrets.SECRET_AZURE_TENANT_ID),
             self.secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
             self.secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
-
-        log.info("Successfully retrieved Azure Graph API token.")
 
         self.headers = {
             "Authorization": f"Bearer {token}",
@@ -109,11 +107,6 @@ class SharePointConnector(BaseModel):
                 unreachable, or the specified library is not found on the site.
 
         """
-        log.info(
-            "Fetching drive ID for library '%s' in site '%s'...",
-            self.library.library,
-            self.library.site,
-        )
         try:
             site_id = self.get_site_id()
             drive_id = auth.get_drive_id(
@@ -122,7 +115,7 @@ class SharePointConnector(BaseModel):
                 self.headers,
             )
             log.info(
-                "Found drive ID for library '%s' in site '%s'",
+                "Resolved SharePoint drive ID for library '%s' in site '%s'.",
                 self.library.library,
                 self.library.site,
             )
@@ -174,8 +167,6 @@ class SharePointConnector(BaseModel):
                 error or if the specified library is not found on the site.
 
         """
-        log.info("Creating SharePoint upload URL...")
-
         session_body = {
             "item": {
                 "@microsoft.graph.conflictBehavior": "replace",
@@ -198,7 +189,10 @@ class SharePointConnector(BaseModel):
         session_resp.raise_for_status()
         url = session_resp.json()["uploadUrl"]
 
-        log.info("Upload session created successfully.")
+        log.info(
+            "Created SharePoint upload session for '%s'.",
+            self.file_path,
+        )
 
         self.upload_url = url
 
@@ -212,8 +206,6 @@ class SharePointConnector(BaseModel):
             None
 
         """
-        log.info("Creating SharePoint download URL...")
-
         self.download_url = f"{self.base_url}/content"
 
     def list_files(self) -> list[str]:
@@ -228,11 +220,6 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the listing request fails.
 
         """
-        log.info(
-            "Listing files in SharePoint library '%s' on site '%s'...",
-            self.library.library,
-            self.library.site,
-        )
         root_url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
             f"/root/children?$select=name,folder"
@@ -281,7 +268,7 @@ class SharePointConnector(BaseModel):
             )
             raise ProcessingError(err) from exc
         log.info(
-            "Found %d file(s) in SharePoint library '%s' on site '%s'.",
+            "Listed %d file(s) in SharePoint library '%s' on site '%s'.",
             len(file_paths),
             self.library.library,
             self.library.site,
@@ -338,8 +325,6 @@ class SharePointConnector(BaseModel):
                 the specified file is not found in SharePoint.
 
         """
-        log.info("Fetching file from SharePoint...")
-
         try:
             file_resp = request_with_retry(
                 "GET",
@@ -396,7 +381,7 @@ class SharePointConnector(BaseModel):
             )
             raise FileSizeMismatchError(err)
         log.info(
-            "Verified uploaded file '%s' (%s bytes)",
+            "Verified SharePoint upload for '%s' (%s bytes).",
             expected_name,
             expected_size,
         )
@@ -483,10 +468,20 @@ class SharePointConnector(BaseModel):
                         f"Chunk upload failed after {MAX_CHUNK_RETRIES} retries: {exc}"
                     )
                     raise ProcessingError(err) from exc
-                log.warning("Chunk upload failed, attempting to resume...")
+                log.warning(
+                    (
+                        "SharePoint chunk upload failed due to network error;"
+                        " attempting resume (retry %s/%s).",
+                    ),
+                    chunk_retries,
+                    MAX_CHUNK_RETRIES,
+                )
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
-                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    log.info(
+                        "Resuming SharePoint chunk upload from byte %s.",
+                        f"{resume_at:,}",
+                    )
                     start = resume_at
                 file.seek(start)
                 continue
@@ -509,10 +504,21 @@ class SharePointConnector(BaseModel):
                         f" after {MAX_CHUNK_RETRIES} retries"
                     )
                     raise ProcessingError(err)
-                log.warning("Chunk upload failed, attempting to resume...")
+                log.warning(
+                    (
+                        "SharePoint chunk upload returned HTTP %s;"
+                        " attempting resume (retry %s/%s).",
+                    ),
+                    r.status_code,
+                    chunk_retries,
+                    MAX_CHUNK_RETRIES,
+                )
                 resume_at = self.get_next_start(session=session)
                 if resume_at != start:
-                    log.info("Resuming from %s after partial upload", f"{resume_at:,}")
+                    log.info(
+                        "Resuming SharePoint chunk upload from byte %s.",
+                        f"{resume_at:,}",
+                    )
                     start = resume_at
                 file.seek(start)
                 continue
@@ -522,7 +528,7 @@ class SharePointConnector(BaseModel):
             pct = int((start / file_size) * 100)
             if pct // 10 > last_logged_pct // 10:
                 log.info(
-                    "Uploaded %s/%s bytes (%s%%)",
+                    "SharePoint chunk upload progress: %s/%s bytes (%s%%).",
                     f"{start:,}",
                     f"{file_size:,}",
                     pct,
