@@ -1,7 +1,5 @@
 """Utility functions for the SharePoint connector."""
 
-import ast
-import json
 import logging
 import sys
 import time
@@ -48,46 +46,37 @@ def build_retry_session() -> requests.Session:
     return session
 
 
-def parse_data_movement_plan_from_env(
-    data_movement_plan: str,
-) -> list[dict[str, dict[str, str]]]:
-    """Parse DATA_MOVEMENT_PLAN from an env var string into validated plan dicts.
-
-    Supports both strict JSON and Python-literal-like input.
-    """
-    try:
-        parsed_plans = json.loads(data_movement_plan)
-    except json.JSONDecodeError:
-        try:
-            parsed_plans = ast.literal_eval(data_movement_plan)
-        except (ValueError, SyntaxError) as exc:
-            err = f"Failed to parse DATA_MOVEMENT_PLAN as JSON or Python literal: {exc}"
-            raise ValueError(err) from exc
-
-    if isinstance(parsed_plans, dict):
-        return [parsed_plans]
-
-    if isinstance(parsed_plans, list) and all(
-        isinstance(item, dict) for item in parsed_plans
-    ):
-        return parsed_plans
-
-    err = "DATA_MOVEMENT_PLAN must decode to a dict or a list of dicts."
-    raise ValueError(err)
-
-
 def request_with_retry(
-    method: Literal["GET", "POST"],
+    method: Literal["GET", "POST", "DELETE"],
     url: str,
     *,
     max_attempts: int = 3,
     **kwargs: Any,  # noqa: ANN401
 ) -> requests.Response:
-    """Issue a GET/POST request with bounded retries for transient failures."""
+    """Issue a request with bounded retries for transient failures.
+
+    Args:
+        method (Literal["GET", "POST", "DELETE"]): The HTTP method to use
+        url (str): The URL to send the request to.
+        max_attempts (int, optional): The maximum number of attempts to make.
+            Defaults to 3.
+        **kwargs: Additional arguments to pass to the request function.
+
+    Returns:
+        requests.Response: The response object from the request.
+
+    Raises:
+        ValueError: If an unsupported HTTP method is provided.
+        requests.RequestException: If the request fails after the maximum
+            number of attempts.
+
+    """
     if method == "GET":
         request_fn: Callable[..., requests.Response] = requests.get
     elif method == "POST":
         request_fn = requests.post
+    elif method == "DELETE":
+        request_fn = requests.delete
     else:
         err = f"Unsupported HTTP method: {method}"
         raise ValueError(err)

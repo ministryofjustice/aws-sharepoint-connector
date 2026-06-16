@@ -1,6 +1,5 @@
 """Pytest fixtures for testing the AWS SharePoint Connector."""
 
-import os
 from collections.abc import Generator
 
 import boto3
@@ -34,9 +33,3 @@ def set_env_vars(monkeypatch_session: pytest.MonkeyPatch) -> None:
 
     for key, value in test_env_vars.items():
         monkeypatch_session.setenv(key, value)
-
-
-def pytest_unconfigure(config: pytest.Config) -> None:
-    """Remove environment variables after all tests have run."""
-    if "DATA_MOVEMENT_PLAN" in os.environ:
-        del os.environ["DATA_MOVEMENT_PLAN"]

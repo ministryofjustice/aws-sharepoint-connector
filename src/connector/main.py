@@ -1,162 +1,95 @@
 """Main entry point for the SharePoint connector application."""
 
-import os
-from typing import Literal, TypedDict
-
-from dotenv import load_dotenv
+from typing import Literal
 
 from connector import utils
 from connector.config import (
-    DataMovementPlan,
-    S3ToSPMovementPlan,
+    S3Bucket,
     SecretConfig,
-    SPToS3MovementPlan,
+    SharePointLibrary,
 )
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from connector.exceptions import UploadError
+from connector.exceptions import InvalidModeError
 
 log = utils.setup_logger()
 
 
-class EngineMapDict(TypedDict):
-    """TypedDict for mapping connector modes to movement plans and engines."""
-
-    plan: type[S3ToSPMovementPlan | SPToS3MovementPlan]
-    engine: type[UploadToSharePointEngine | UploadToS3Engine]
-
-
-ENGINE_MAP: dict[str, EngineMapDict] = {
-    "write_to_s3": {
-        "plan": SPToS3MovementPlan,
-        "engine": UploadToS3Engine,
-    },
-    "write_to_sharepoint": {
-        "plan": S3ToSPMovementPlan,
-        "engine": UploadToSharePointEngine,
-    },
+MODE_MAP: dict[str, type[UploadToS3Engine | UploadToSharePointEngine]] = {
+    "write_to_s3": UploadToS3Engine,
+    "write_to_sharepoint": UploadToSharePointEngine,
 }
 
 
-def run(
-    mode: Literal["write_to_s3", "write_to_sharepoint"] | None = None,
-    data_movement_plan: list[dict[str, dict[str, str]]] | None = None,
-) -> None:
-    """Entry point for the connector application.
+def create_engine(
+    mode: Literal["write_to_s3", "write_to_sharepoint"],
+    sp_site: str,
+    sp_library: str,
+    s3_bucket: str,
+) -> UploadToSharePointEngine | UploadToS3Engine:
+    """Create an engine instance for transferring files between S3 and SharePoint.
+
+    Available engines are ``UploadToS3Engine`` and ``UploadToSharePointEngine``.
+    Each is configured with the same SharePoint site, SharePoint library, and S3 bucket.
+    The engine will parse one as the source and one as the destination.
+
+    Make use of the 'list_source_files' method to what files are located in the source
+    and amend according to your needs.
+
+    Iterate over each file to be transferred and call the 'run' method with the
+    source and destination paths to perform the transfer. An s3 source/destination is
+    the full s3 key (excluding the bucket name) and a SharePoint source/destination is
+    the full path to the file (excluding the site and library).
+
+    The 'run' method validates that the configuration is correct (expected bucket,
+    folders and files exist). Then downloads the file from the source and uploads it to
+    the destination.
+
+    Optionally delete the source files after successfully transferring them by using
+    the optional 'delete' argument in the 'run' method.
 
     Args:
-        mode (Literal["write_to_s3", "write_to_sharepoint"] | None): Optional
-            argument to specify whether to copy a file from s3 to Sharepoint or
-            vice versa. If not provided, the mode will be read from environment
-            variables or a .env file.
-        data_movement_plan (list[dict[str, dict[str, str]]] | None): Optional
-            argument to specify the files to be moved and their destinations.
-            If not provided, the movement plan will be read from environment variables
-            or a .env file.
+        mode (Literal["write_to_s3", "write_to_sharepoint"]): Transfer direction.
+            ``write_to_s3`` downloads from SharePoint and uploads to S3;
+            ``write_to_sharepoint`` downloads from S3 and uploads to SharePoint.
+        sp_site (str): SharePoint site name (without the full URL prefix).
+            For a file at ``https://justiceuk.sharepoint.com/sites/analytics-site/...``
+            use ``sp_site='analytics-site'``.
+        sp_library (str): Name of SharePoint document library (e.g. ``'Documents'``).
+        s3_bucket (str): S3 bucket name without the ``s3://`` prefix.
 
     Returns:
-        None
+        UploadToSharePointEngine | UploadToS3Engine:
+            A configured engine instance ready to run file transfers.
 
-    Example movement plans:
-    -----------------------
+    Raises:
+        ValueError: If ``mode`` is not one of the valid transfer directions.
+        ValidationError: If any configuration value fails Pydantic validation.
 
-    For a Sharepoint file located at:
-    https://justiceuk.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv
-
-    ```
-    data_movement_plan=[
-        {
-            "source": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "daily_report.csv"
-            },
-            "destination": {
-                "bucket": "my-destination-bucket",
-                "key": "path/to/daily_report.csv"
-            }
-        }
-    ]
-    ```
-
-    for an S3 file located at:
-    s3://my-source-bucket/path/to/file1.csv
-
-    ```
-    data_movement_plan=[
-        {
-            "source": {
-                "bucket": "my-source-bucket",
-                "key": "path/to/file1.csv"
-            },
-            "destination": {
-                "site": "analytics-site",
-                "library": "Documents",
-                "directory": "reports/2026/",
-                "filename": "file1.csv"
-            }
-        }
-    ]
-    ```
+    Example:
+        >>> eng = create_engine(
+        ...     mode="write_to_s3",
+        ...     sp_site="analytics-site",
+        ...     sp_library="Documents",
+        ...     s3_bucket="my-destination-bucket",
+        ... )
+        >>> eng.run(source="reports/2026/file1.csv", destination="path/to/file1.csv")
 
     """
-    load_dotenv()
-    log.info("Starting file transfer process...")
+    if mode not in MODE_MAP:
+        err = f"Invalid mode '{mode}'. Valid modes: {list(MODE_MAP)}"
+        raise InvalidModeError(err)
 
-    run_mode = mode or os.getenv("MODE")
+    secrets = SecretConfig()  # type: ignore[call-arg]
+    library = SharePointLibrary(site=sp_site, library=sp_library)
+    bucket = S3Bucket(bucket=s3_bucket)
 
-    if run_mode not in ENGINE_MAP:
-        err = (
-            f"Invalid mode '{run_mode}'. Must be one of: {', '.join(ENGINE_MAP.keys())}"
-        )
-        log.error(err)
-        raise ValueError(err)
-
-    if data_movement_plan is None:
-        data_movement_plan_env = os.environ.get("DATA_MOVEMENT_PLAN")
-        if not data_movement_plan_env:
-            err = (
-                "No data movement plan has been provided. Please provide movement plans"
-                " via the 'DATA_MOVEMENT_PLAN' environment variable or as an argument"
-                " to the run function."
-            )
-            log.error(err)
-            raise ValueError(err)
-
-        data_movement_plan = utils.parse_data_movement_plan_from_env(
-            data_movement_plan_env
-        )
-
-    data_movement_plan = (
-        [data_movement_plan]
-        if isinstance(data_movement_plan, dict)
-        else data_movement_plan
+    log.info(
+        "Creating engine for mode '%s' (site='%s', library='%s', bucket='%s').",
+        mode,
+        sp_site,
+        sp_library,
+        s3_bucket,
     )
 
-    engine_class = ENGINE_MAP[run_mode]["engine"]
-    movement_plan_class = ENGINE_MAP[run_mode]["plan"]
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    all_movement_plans = [
-        movement_plan_class(**movement_plan)  # type: ignore[arg-type]
-        for movement_plan in data_movement_plan
-    ]
-    final_data_movement_plan = DataMovementPlan(data_to_move=all_movement_plans)
-
-    plans = final_data_movement_plan.data_to_move
-    total = len(plans)
-    for i, plan in enumerate(plans, start=1):
-        log.info("Processing file %s/%s: %s", i, total, plan.s3_file_key)
-        engine = engine_class(secrets=secrets, plan=plan)
-
-        try:
-            content = engine.download_file()
-            engine.upload_file(content)
-            log.info("Completed file %s/%s: %s", i, total, plan.s3_file_key)
-        except UploadError:
-            log.exception("Failed file %s/%s: %s", i, total, plan.s3_file_key)
-            raise
-
-
-if __name__ == "__main__":
-    run()  # pragma: no cover
+    engine_class = MODE_MAP[mode]
+    return engine_class(secrets=secrets, library=library, bucket=bucket)

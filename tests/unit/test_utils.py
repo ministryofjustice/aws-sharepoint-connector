@@ -1,6 +1,5 @@
 """Unit tests for utility helpers in connector.utils."""
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -11,70 +10,11 @@ from connector import utils
 from connector.constants import RETRYABLE_ERROR_CODES
 
 
-def _sample_plan() -> dict[str, dict[str, str]]:
-    return {
-        "source": {"bucket": "my-bucket", "key": "path/file.csv"},
-        "destination": {
-            "site": "analytics-site",
-            "library": "Documents",
-            "filename": "file.csv",
-        },
-    }
-
-
 def _response(status_code: int) -> Response:
     """Build a minimal Response object with the supplied status code."""
     response = Response()
     response.status_code = status_code
     return response
-
-
-def test_parse_data_movement_plan_from_env_accepts_json_list() -> None:
-    """It parses a JSON list payload and returns it unchanged."""
-    plan = _sample_plan()
-    raw = json.dumps([plan])
-
-    parsed = utils.parse_data_movement_plan_from_env(raw)
-
-    assert parsed == [plan]
-
-
-def test_parse_data_movement_plan_from_env_wraps_json_dict() -> None:
-    """It wraps a single decoded dict into a one-item list."""
-    plan = _sample_plan()
-    raw = json.dumps(plan)
-
-    parsed = utils.parse_data_movement_plan_from_env(raw)
-
-    assert parsed == [plan]
-
-
-def test_parse_data_movement_plan_from_env_accepts_python_literal() -> None:
-    """It supports Python-literal style input as a fallback path."""
-    plan = _sample_plan()
-    raw = str([plan])
-
-    parsed = utils.parse_data_movement_plan_from_env(raw)
-
-    assert parsed == [plan]
-
-
-def test_parse_data_movement_plan_from_env_raises_for_unparsable_value() -> None:
-    """It raises ValueError when input is neither valid JSON nor literal."""
-    with pytest.raises(
-        ValueError,
-        match="Failed to parse DATA_MOVEMENT_PLAN as JSON or Python literal",
-    ):
-        utils.parse_data_movement_plan_from_env("not-a-valid-plan")
-
-
-def test_parse_data_movement_plan_from_env_raises_for_wrong_decoded_type() -> None:
-    """It raises ValueError when decoded payload is not dict/list[dict]."""
-    with pytest.raises(
-        ValueError,
-        match="DATA_MOVEMENT_PLAN must decode to a dict or a list of dicts",
-    ):
-        utils.parse_data_movement_plan_from_env(json.dumps("plain-string"))
 
 
 def test_request_with_retry_get_returns_on_first_success() -> None:
@@ -99,6 +39,17 @@ def test_request_with_retry_post_uses_post_request_function() -> None:
 
     assert response.status_code == 201
     assert mock_post.call_count == 1
+
+
+def test_request_with_retry_delete_uses_delete_request_function() -> None:
+    """DELETE mode should dispatch through requests.delete."""
+    with patch(
+        "connector.utils.requests.delete", return_value=_response(204)
+    ) as mock_delete:
+        response = utils.request_with_retry("DELETE", "https://example.com")
+
+    assert response.status_code == 204
+    assert mock_delete.call_count == 1
 
 
 def test_request_with_retry_retries_on_retryable_status_code() -> None:
