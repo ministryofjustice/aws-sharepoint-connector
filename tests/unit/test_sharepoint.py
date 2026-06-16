@@ -9,7 +9,7 @@ import pytest
 import requests
 
 from connector.config import SecretConfig
-from connector.exceptions import NoLibraryError, UploadError
+from connector.exceptions import NoLibraryError, ProcessingError
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -83,7 +83,7 @@ def test_get_site_id_success() -> None:
 
 
 def test_get_site_id_missing_id_raises() -> None:
-    """Test that get_site_id raises UploadError when Graph omits 'id'."""
+    """Test that get_site_id raises ProcessingError when Graph omits 'id'."""
     connector = make_connector()
 
     with (
@@ -91,7 +91,7 @@ def test_get_site_id_missing_id_raises() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=200, json_body={}),
         ),
-        pytest.raises(UploadError, match="no site ID"),
+        pytest.raises(ProcessingError, match="no site ID"),
     ):
         connector.get_site_id()
 
@@ -136,14 +136,14 @@ def test_get_drive_id_success() -> None:
     ],
 )
 def test_set_drive_id_error(exception: Exception) -> None:
-    """Test that set_drive_id raises UploadError when drive retrieval fails."""
+    """Test that set_drive_id raises ProcessingError when drive retrieval fails."""
     with (
         utils.sharepoint_connector_patches(),
         patch(
             "connector.sharepoint.SharePointConnector.get_site_id",
             side_effect=exception,
         ),
-        pytest.raises(UploadError),
+        pytest.raises(ProcessingError),
     ):
         make_connector()
 
@@ -156,7 +156,7 @@ def test_set_drive_id_no_library_error() -> None:
             "connector.auth.get_drive_id",
             side_effect=NoLibraryError("Library 'Documents' not found on site 'x'"),
         ),
-        pytest.raises(UploadError, match="Could not connect to SharePoint library"),
+        pytest.raises(ProcessingError, match="Could not connect to SharePoint library"),
     ):
         make_connector()
 
@@ -254,14 +254,16 @@ def test_list_files_pagination() -> None:
 
 
 def test_list_files_request_error() -> None:
-    """list_files raises UploadError when the listing request fails."""
+    """list_files raises ProcessingError when the listing request fails."""
     connector = make_connector()
     with (
         patch(
             "connector.sharepoint.requests.get",
             side_effect=requests.RequestException("timeout"),
         ),
-        pytest.raises(UploadError, match="Failed to list files in SharePoint library"),
+        pytest.raises(
+            ProcessingError, match="Failed to list files in SharePoint library"
+        ),
     ):
         connector.list_files()
 
@@ -298,14 +300,14 @@ def test_check_object_exists_success(
 def test_check_object_exists_not_found(
     object_type: Literal["file", "folder"], object_name: str, match_message: str
 ) -> None:
-    """check_object_exists raises UploadError when the file is absent."""
+    """check_object_exists raises ProcessingError when the file is absent."""
     connector = make_connector()
     with (
         patch(
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404, json_body={}),
         ),
-        pytest.raises(UploadError, match=match_message),
+        pytest.raises(ProcessingError, match=match_message),
     ):
         connector.check_object_exists(object_name, object_type)
 
@@ -330,7 +332,7 @@ def test_check_object_exists_incorrect_type(
     json_body: dict[str, str],
     input_path: str,
 ) -> None:
-    """check_object_exists raises UploadError if path resolves to wrong object type."""
+    """check_object_exists raises ProcessingError if path resolves to wrong type."""
     folder_as_file_response = utils.build_response(
         status_code=200,
         json_body=json_body,
@@ -340,7 +342,7 @@ def test_check_object_exists_incorrect_type(
     ):
         connector = make_connector()
         with pytest.raises(
-            UploadError,
+            ProcessingError,
             match=f"SharePoint path 'reports/{input_path}' exists but is not a"
             f" {object_type}",
         ):
@@ -354,7 +356,7 @@ def test_check_object_exists_incorrect_type(
 def test_check_object_exists_request_error(
     object_type: Literal["file", "folder"],
 ) -> None:
-    """check_object_exists raises UploadError on a network error for a file check."""
+    """check_object_exists raises ProcessingError on a network error for file check."""
     connector = make_connector()
     with (
         patch(
@@ -362,7 +364,7 @@ def test_check_object_exists_request_error(
             side_effect=requests.RequestException("network error"),
         ),
         pytest.raises(
-            UploadError, match=f"Failed to check SharePoint {object_type} existence"
+            ProcessingError, match=f"Failed to check SharePoint {object_type} existence"
         ),
     ):
         connector.check_object_exists(SP_FILE_PATH, object_type)
@@ -385,7 +387,7 @@ def test_fetch_file_success() -> None:
 
 
 def test_fetch_file_not_found() -> None:
-    """Test that fetch_file raises UploadError when the file is missing."""
+    """Test that fetch_file raises ProcessingError when the file is missing."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -396,13 +398,13 @@ def test_fetch_file_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.mock_fetch_file_response(404),
         ),
-        pytest.raises(UploadError, match="File not found in SharePoint"),
+        pytest.raises(ProcessingError, match="File not found in SharePoint"),
     ):
         connector.fetch_file()
 
 
 def test_fetch_file_request_error() -> None:
-    """Test that fetch_file raises UploadError on request errors."""
+    """Test that fetch_file raises ProcessingError on request errors."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -413,7 +415,7 @@ def test_fetch_file_request_error() -> None:
             "connector.sharepoint.requests.get",
             side_effect=requests.RequestException("Mock request error"),
         ),
-        pytest.raises(UploadError, match="Failed to fetch file from SharePoint"),
+        pytest.raises(ProcessingError, match="Failed to fetch file from SharePoint"),
     ):
         connector.fetch_file()
 
@@ -468,7 +470,7 @@ def test_verify_uploaded_file_success(
 
 
 def test_verify_uploaded_not_found() -> None:
-    """Test that verify_uploaded_file raises UploadError when the file is absent."""
+    """Test that verify_uploaded_file raises ProcessingError when the file is absent."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -478,13 +480,13 @@ def test_verify_uploaded_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404),
         ),
-        pytest.raises(UploadError, match="Verification failed"),
+        pytest.raises(ProcessingError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
 
 def test_verify_uploaded_size_mismatch() -> None:
-    """Test that verify_uploaded_file raises UploadError when size does not match."""
+    """Test verify_uploaded_file raises ProcessingError when size does not match."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -497,13 +499,13 @@ def test_verify_uploaded_size_mismatch() -> None:
                 json_body={"name": SP_FILE_NAME, "size": 999, "file": {}},
             ),
         ),
-        pytest.raises(UploadError, match="Verification failed"),
+        pytest.raises(ProcessingError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
 
 def test_verify_uploaded_file_request_error() -> None:
-    """Test that verify_uploaded_file raises UploadError on RequestException."""
+    """Test that verify_uploaded_file raises ProcessingError on RequestException."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -513,7 +515,7 @@ def test_verify_uploaded_file_request_error() -> None:
             "connector.sharepoint.requests.get",
             side_effect=requests.RequestException("network error"),
         ),
-        pytest.raises(UploadError, match="Failed to verify uploaded file"),
+        pytest.raises(ProcessingError, match="Failed to verify uploaded file"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
@@ -569,12 +571,12 @@ def test_upload_stream_in_chunks_permanent_error_raises() -> None:
         connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="permanent HTTP 403"):
+        with pytest.raises(ProcessingError, match="permanent HTTP 403"):
             connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
 
 
 def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
-    """Test that exceeding MAX_CHUNK_RETRIES raises UploadError."""
+    """Test that exceeding MAX_CHUNK_RETRIES raises ProcessingError."""
     payload = b"chunk-content"
 
     with (
@@ -593,7 +595,7 @@ def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
         connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="retries"):
+        with pytest.raises(ProcessingError, match="retries"):
             connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
 
 
@@ -636,7 +638,7 @@ def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -
 
 
 def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> None:
-    """Test that a 5xx response exceeding MAX_CHUNK_RETRIES raises UploadError."""
+    """Test that a 5xx response exceeding MAX_CHUNK_RETRIES raises ProcessingError."""
     payload = b"chunk-content"
     file_size = len(payload)
     # MAX_CHUNK_RETRIES=5: 6 puts all fail; 6 Session.get calls (1 initial + 5 resumes)
@@ -659,7 +661,7 @@ def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> Non
         connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="retries"):
+        with pytest.raises(ProcessingError, match="retries"):
             connector.upload_stream_in_chunks(BytesIO(payload), file_size)
 
 
@@ -724,7 +726,7 @@ def test_delete_file_success() -> None:
 
 
 def test_delete_file_not_found() -> None:
-    """delete_file raises UploadError when SharePoint returns 404."""
+    """delete_file raises ProcessingError when SharePoint returns 404."""
     connector = make_connector()
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -733,13 +735,15 @@ def test_delete_file_not_found() -> None:
             "connector.sharepoint.requests.delete",
             return_value=utils.build_response(status_code=404),
         ),
-        pytest.raises(UploadError, match="File not found in SharePoint for deletion"),
+        pytest.raises(
+            ProcessingError, match="File not found in SharePoint for deletion"
+        ),
     ):
         connector.delete_file()
 
 
 def test_delete_file_request_error() -> None:
-    """delete_file raises UploadError when the DELETE request fails."""
+    """delete_file raises ProcessingError when the DELETE request fails."""
     connector = make_connector()
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -748,6 +752,6 @@ def test_delete_file_request_error() -> None:
             "connector.sharepoint.requests.delete",
             side_effect=requests.RequestException("network error"),
         ),
-        pytest.raises(UploadError, match="Failed to delete file from SharePoint"),
+        pytest.raises(ProcessingError, match="Failed to delete file from SharePoint"),
     ):
         connector.delete_file()

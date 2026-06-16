@@ -13,7 +13,11 @@ from connector.config import (
     SecretConfig,
     SharePointLibrary,
 )
-from connector.exceptions import UploadError
+from connector.exceptions import (
+    IncorrectObjectTypeError,
+    ObjectNotFoundError,
+    ProcessingError,
+)
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
 from connector.utils import setup_logger
@@ -83,7 +87,7 @@ class Engine(ABC):
             destination (str): Destination file path (SharePoint path or S3 key).
 
         Raises:
-            UploadError: If one or more validation checks fail.
+            ProcessingError: If one or more validation checks fail.
 
         """
 
@@ -97,7 +101,9 @@ class Engine(ABC):
                 transfer.
 
         Raises:
-            UploadError: If the download or upload step fails.
+            ProcessingError: If any step of the transfer fails, including validation,
+                download, upload, or deletion of the source file.
+            ObjectNotFoundError: If the source file does not exist in source storage.
 
         Source is the full S3 key (excluding the bucket name) or the full path to the
         SharePoint file (excluding the site and library). Destination is the full path
@@ -139,7 +145,18 @@ class UploadToSharePointEngine(Engine):
     """
 
     def list_source_files(self) -> list[str]:
-        """List all object keys in the S3 source bucket."""
+        """List all object keys in the S3 source bucket.
+
+        Args:
+            None
+
+        Returns:
+            list[str]: All object keys in the S3 source bucket.
+
+        Raises:
+            ProcessingError: If the listing request fails.
+
+        """
         return self.s3_connector.list_objects()
 
     def validate_plan(self, source: str, destination: str) -> None:
@@ -156,7 +173,7 @@ class UploadToSharePointEngine(Engine):
             destination (str): Destination file path (SharePoint path).
 
         Raises:
-            UploadError: If one or more validation checks fail.
+            ProcessingError: If one or more validation checks fail.
 
         """
         log.info("Validating source: '%s' and destination: '%s'", source, destination)
@@ -164,26 +181,30 @@ class UploadToSharePointEngine(Engine):
 
         try:
             self.s3_connector.check_bucket_exists()
-        except UploadError as exc:
+        except ProcessingError as exc:
             errors.append(str(exc))
 
         try:
             self.s3_connector.update_with_key(source)
             self.s3_connector.check_object_exists()
-        except UploadError as exc:
+        except ProcessingError as exc:
             errors.append(str(exc))
 
         folder = str(Path(destination).parent)
         if folder and folder != ".":
             try:
                 self.sharepoint_connector.check_object_exists(folder, "folder")
-            except UploadError as exc:
+            except (
+                IncorrectObjectTypeError,
+                ObjectNotFoundError,
+                ProcessingError,
+            ) as exc:
                 errors.append(str(exc))
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
             err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
-            raise UploadError(err)
+            raise ProcessingError(err)
 
         log.info("Validation passed.")
 
@@ -197,7 +218,7 @@ class UploadToSharePointEngine(Engine):
             bytes: The content of the S3 object as bytes.
 
         Raises:
-            UploadError: If the S3 download fails.
+            ProcessingError: If the S3 download fails.
 
         """
         log.info("Downloading s3://%s/%s...", self.bucket.bucket, source)
@@ -212,7 +233,9 @@ class UploadToSharePointEngine(Engine):
             destination (str): The destination path in SharePoint.
 
         Raises:
-            UploadError: If the SharePoint upload or verification fails.
+            FileSizeMismatchError: If the uploaded file does not match expected size.
+            ObjectNotFoundError: If the destination folder does not exist in SharePoint.
+            ProcessingError: If the SharePoint upload or verification fails.
 
         """
         log.info(
@@ -226,7 +249,18 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.verify_uploaded_file(expected_size=len(content))
 
     def delete_source_file(self, source: str) -> None:
-        """Delete a file from S3."""
+        """Delete a file from S3.
+
+        Args:
+            source (str): The source S3 key.
+
+        Returns:
+            None
+
+        Raises:
+            ProcessingError: If the S3 deletion fails.
+
+        """
         log.info("Deleting source file s3://%s/%s...", self.bucket.bucket, source)
         self.s3_connector.update_with_key(source)
         self.s3_connector.delete_object()
@@ -248,7 +282,18 @@ class UploadToS3Engine(Engine):
     """
 
     def list_source_files(self) -> list[str]:
-        """List all file paths in the SharePoint source library."""
+        """List all file paths in the SharePoint source library.
+
+        Args:
+            None
+
+        Returns:
+            list[str]: All object keys in the S3 source bucket.
+
+        Raises:
+            ProcessingError: If the listing request fails.
+
+        """
         return self.sharepoint_connector.list_files()
 
     def validate_plan(self, source: str, destination: str) -> None:
@@ -267,7 +312,7 @@ class UploadToS3Engine(Engine):
             destination (str): Destination file path (S3 key).
 
         Raises:
-            UploadError: If one or more validation checks fail.
+            ProcessingError: If one or more validation checks fail.
 
         """
         log.info("Validating source: '%s' and destination: '%s'", source, destination)
@@ -275,18 +320,18 @@ class UploadToS3Engine(Engine):
 
         try:
             self.s3_connector.check_bucket_exists()
-        except UploadError as exc:
+        except ProcessingError as exc:
             errors.append(str(exc))
 
         try:
             self.sharepoint_connector.check_object_exists(source, "file")
-        except UploadError as exc:
+        except (IncorrectObjectTypeError, ObjectNotFoundError, ProcessingError) as exc:
             errors.append(str(exc))
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
             err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
-            raise UploadError(err)
+            raise ProcessingError(err)
 
         log.info("Validation passed.")
 
@@ -300,7 +345,7 @@ class UploadToS3Engine(Engine):
             bytes: The content of the SharePoint file as bytes.
 
         Raises:
-            UploadError: If the SharePoint download fails.
+            ProcessingError: If the SharePoint download fails.
 
         """
         log.info(
@@ -320,7 +365,7 @@ class UploadToS3Engine(Engine):
             destination (str): The destination S3 key.
 
         Raises:
-            UploadError: If the S3 upload or verification fails.
+            ProcessingError: If the S3 upload or verification fails.
 
         """
         log.info(
@@ -335,7 +380,18 @@ class UploadToS3Engine(Engine):
         log.info("S3 upload verification succeeded.")
 
     def delete_source_file(self, source: str) -> None:
-        """Delete a file from SharePoint."""
+        """Delete a file from S3.
+
+        Args:
+            source (str): The source S3 key.
+
+        Returns:
+            None
+
+        Raises:
+            ProcessingError: If the S3 deletion fails.
+
+        """
         log.info("Deleting source file '%s' from SharePoint...", source)
         self.sharepoint_connector.update_with_file_path(source)
         self.sharepoint_connector.delete_file()

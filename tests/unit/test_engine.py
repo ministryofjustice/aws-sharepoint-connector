@@ -7,7 +7,7 @@ import pytest
 
 from connector import engine
 from connector.config import SecretConfig
-from connector.exceptions import UploadError
+from connector.exceptions import ProcessingError
 from connector.s3 import S3Connector
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
@@ -84,7 +84,7 @@ class TestEngines:
         method_to_fail: str,
         s3: boto3.client,
     ) -> None:
-        """Test that validate_plan raises UploadError for an invalid plan."""
+        """Test that validate_plan raises ProcessingError for an invalid plan."""
         upload_sp_engine = self.setup_engine("sharepoint", s3)
 
         with (
@@ -95,9 +95,9 @@ class TestEngines:
             patch.object(
                 object_to_fail,
                 method_to_fail,
-                side_effect=UploadError("Validation failed"),
+                side_effect=ProcessingError("Validation failed"),
             ),
-            pytest.raises(UploadError) as exc_info,
+            pytest.raises(ProcessingError) as exc_info,
         ):
             upload_sp_engine.validate_plan(
                 source="reports/2026/file.csv",
@@ -110,23 +110,23 @@ class TestEngines:
     def test_upload_sharepoint_validation_plan_multi_invalid(
         self, s3: boto3.client
     ) -> None:
-        """Test that validate_plan raises UploadError for multiple issues."""
+        """Test that validate_plan raises ProcessingError for multiple issues."""
         upload_sp_engine = self.setup_engine("sharepoint", s3)
 
         with (
             patch.object(
                 S3Connector,
                 "check_bucket_exists",
-                side_effect=UploadError("S3 validation failed"),
+                side_effect=ProcessingError("S3 validation failed"),
             ),
             patch.object(
                 SharePointConnector,
                 "check_object_exists",
-                side_effect=UploadError("SharePoint validation failed"),
+                side_effect=ProcessingError("SharePoint validation failed"),
             ),
             patch.object(S3Connector, "update_with_key"),
             patch.object(S3Connector, "check_object_exists"),
-            pytest.raises(UploadError) as exc_info,
+            pytest.raises(ProcessingError) as exc_info,
         ):
             upload_sp_engine.validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
@@ -295,7 +295,7 @@ class TestEngines:
         method_to_fail: str,
         s3: boto3.client,
     ) -> None:
-        """Test that validate_plan raises UploadError for an invalid plan."""
+        """Test that validate_plan raises ProcessingError for an invalid plan."""
         upload_s3_engine = self.setup_engine("s3", s3)
 
         with (
@@ -304,9 +304,9 @@ class TestEngines:
             patch.object(
                 object_to_fail,
                 method_to_fail,
-                side_effect=UploadError("Validation failed"),
+                side_effect=ProcessingError("Validation failed"),
             ),
-            pytest.raises(UploadError) as exc_info,
+            pytest.raises(ProcessingError) as exc_info,
         ):
             upload_s3_engine.validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
@@ -316,21 +316,21 @@ class TestEngines:
         assert "Validation failed with 1 error(s)" in str(exc_info.value)
 
     def test_upload_s3_validation_plan_multi_invalid(self, s3: boto3.client) -> None:
-        """Test that validate_plan raises UploadError for multiple issues."""
+        """Test that validate_plan raises ProcessingError for multiple issues."""
         upload_s3_engine = self.setup_engine("s3", s3)
 
         with (
             patch.object(
                 S3Connector,
                 "check_bucket_exists",
-                side_effect=UploadError("S3 validation failed"),
+                side_effect=ProcessingError("S3 validation failed"),
             ),
             patch.object(
                 SharePointConnector,
                 "check_object_exists",
-                side_effect=UploadError("SharePoint validation failed"),
+                side_effect=ProcessingError("SharePoint validation failed"),
             ),
-            pytest.raises(UploadError) as exc_info,
+            pytest.raises(ProcessingError) as exc_info,
         ):
             upload_s3_engine.validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"

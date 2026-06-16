@@ -9,6 +9,7 @@ from connector.config import (
     SharePointLibrary,
 )
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from connector.exceptions import InvalidModeError
 
 log = utils.setup_logger()
 
@@ -76,7 +77,7 @@ def create_engine(
     """
     if mode not in MODE_MAP:
         err = f"Invalid mode '{mode}'. Valid modes: {list(MODE_MAP)}"
-        raise ValueError(err)
+        raise InvalidModeError(err)
 
     secrets = SecretConfig()  # type: ignore[call-arg]
     library = SharePointLibrary(site=sp_site, library=sp_library)

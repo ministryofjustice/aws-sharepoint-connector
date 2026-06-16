@@ -247,10 +247,10 @@ For large files, uploads are split into **10 MB chunks**:
 
 - **Max 5 consecutive failures** per chunk before aborting the entire transfer
 - **Transient errors** (429 Too Many Requests, 5xx): retried with exponential backoff
-- **Permanent errors** (4xx excluding 429): immediately raised as `UploadError` without retry
+- **Permanent errors** (4xx excluding 429): immediately raised as `ProcessingError` without retry
 - **File pointer reset** on every retry to ensure data consistency
 
-Example: If a 50 MB file fails on chunk 3 of 5, the transfer aborts and raises `UploadError`.
+Example: If a 50 MB file fails on chunk 3 of 5, the transfer aborts and raises `ProcessingError`.
 
 ### HTTP Request Retries
 
@@ -263,7 +263,7 @@ All Graph API and HTTP calls use `request_with_retry()`:
 
 ### Batch Processing Behavior
 
-Batch iteration is handled by the calling code. The engine processes one file per `engine.run()` call and raises `UploadError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
+Batch iteration is handled by the calling code. The engine processes one file per `engine.run()` call and raises `ProcessingError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
 
 ## How to modify or extend
 
