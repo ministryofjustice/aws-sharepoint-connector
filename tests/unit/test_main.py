@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from connector import engine as engine_module
+from connector.exceptions import InvalidModeError
 from connector.main import create_engine
 
 
@@ -31,9 +32,9 @@ class TestCreateEngine:
         )
         assert isinstance(eng, engine_module.UploadToSharePointEngine)
 
-    def test_invalid_mode_raises_value_error(self) -> None:
-        """Test that an unrecognised mode raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid mode"):
+    def test_invalid_mode(self) -> None:
+        """Test that an unrecognised mode raises InvalidModeError."""
+        with pytest.raises(InvalidModeError, match="Invalid mode"):
             create_engine(
                 "invalid_mode",  # type: ignore[arg-type]
                 "analytics-site",

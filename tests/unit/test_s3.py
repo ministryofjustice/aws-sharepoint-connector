@@ -6,7 +6,7 @@ import boto3
 import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 
-from connector.exceptions import ProcessingError
+from connector.exceptions import FileSizeMismatchError, ProcessingError
 from connector.s3 import S3Connector
 from tests import test_utils as utils
 
@@ -187,7 +187,7 @@ def test_verify_uploaded_object_success(
 def test_verify_uploaded_object_size_mismatch(
     connector: S3Connector, s3: boto3.client
 ) -> None:
-    """verify_uploaded_object raises ProcessingError if object size does not match."""
+    """verify_uploaded_object raises FileSizeMismatchError if size does not match."""
     data = b"test data"
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
@@ -195,7 +195,7 @@ def test_verify_uploaded_object_size_mismatch(
     connector.update_with_key(S3_KEY)
 
     with pytest.raises(
-        ProcessingError, match="Verification failed for uploaded S3 object"
+        FileSizeMismatchError, match="Verification failed for uploaded S3 object"
     ):
         connector.verify_uploaded_object(expected_size=len(data) + 1)
 

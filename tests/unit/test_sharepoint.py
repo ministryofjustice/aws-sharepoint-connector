@@ -9,7 +9,14 @@ import pytest
 import requests
 
 from connector.config import SecretConfig
-from connector.exceptions import NoLibraryError, ProcessingError
+from connector.exceptions import (
+    FileSizeMismatchError,
+    IncorrectObjectTypeError,
+    NoLibraryError,
+    NoSiteError,
+    ObjectNotFoundError,
+    ProcessingError,
+)
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -82,8 +89,8 @@ def test_get_site_id_success() -> None:
     }
 
 
-def test_get_site_id_missing_id_raises() -> None:
-    """Test that get_site_id raises ProcessingError when Graph omits 'id'."""
+def test_get_site_id_missing_id() -> None:
+    """Test that get_site_id raises NoSiteError when Graph omits 'id'."""
     connector = make_connector()
 
     with (
@@ -91,7 +98,7 @@ def test_get_site_id_missing_id_raises() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=200, json_body={}),
         ),
-        pytest.raises(ProcessingError, match="no site ID"),
+        pytest.raises(NoSiteError, match="no site ID"),
     ):
         connector.get_site_id()
 
@@ -300,14 +307,14 @@ def test_check_object_exists_success(
 def test_check_object_exists_not_found(
     object_type: Literal["file", "folder"], object_name: str, match_message: str
 ) -> None:
-    """check_object_exists raises ProcessingError when the file is absent."""
+    """check_object_exists raises ObjectNotFoundError when the file is absent."""
     connector = make_connector()
     with (
         patch(
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404, json_body={}),
         ),
-        pytest.raises(ProcessingError, match=match_message),
+        pytest.raises(ObjectNotFoundError, match=match_message),
     ):
         connector.check_object_exists(object_name, object_type)
 
@@ -332,7 +339,7 @@ def test_check_object_exists_incorrect_type(
     json_body: dict[str, str],
     input_path: str,
 ) -> None:
-    """check_object_exists raises ProcessingError if path resolves to wrong type."""
+    """check_object_exists raises IncorrectObjectTypeError if path is wrong type."""
     folder_as_file_response = utils.build_response(
         status_code=200,
         json_body=json_body,
@@ -342,7 +349,7 @@ def test_check_object_exists_incorrect_type(
     ):
         connector = make_connector()
         with pytest.raises(
-            ProcessingError,
+            IncorrectObjectTypeError,
             match=f"SharePoint path 'reports/{input_path}' exists but is not a"
             f" {object_type}",
         ):
@@ -387,7 +394,7 @@ def test_fetch_file_success() -> None:
 
 
 def test_fetch_file_not_found() -> None:
-    """Test that fetch_file raises ProcessingError when the file is missing."""
+    """Test that fetch_file raises ObjectNotFoundError when the file is missing."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -398,7 +405,7 @@ def test_fetch_file_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.mock_fetch_file_response(404),
         ),
-        pytest.raises(ProcessingError, match="File not found in SharePoint"),
+        pytest.raises(ObjectNotFoundError, match="File not found in SharePoint"),
     ):
         connector.fetch_file()
 
@@ -470,7 +477,7 @@ def test_verify_uploaded_file_success(
 
 
 def test_verify_uploaded_not_found() -> None:
-    """Test that verify_uploaded_file raises ProcessingError when the file is absent."""
+    """Test that verify_uploaded_file raises ObjectNotFoundError when file is absent."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -480,13 +487,13 @@ def test_verify_uploaded_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404),
         ),
-        pytest.raises(ProcessingError, match="Verification failed"),
+        pytest.raises(ObjectNotFoundError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
 
 def test_verify_uploaded_size_mismatch() -> None:
-    """Test verify_uploaded_file raises ProcessingError when size does not match."""
+    """Test verify_uploaded_file raises FileSizeMismatchError if size does not match."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
@@ -499,7 +506,7 @@ def test_verify_uploaded_size_mismatch() -> None:
                 json_body={"name": SP_FILE_NAME, "size": 999, "file": {}},
             ),
         ),
-        pytest.raises(ProcessingError, match="Verification failed"),
+        pytest.raises(FileSizeMismatchError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
@@ -726,7 +733,7 @@ def test_delete_file_success() -> None:
 
 
 def test_delete_file_not_found() -> None:
-    """delete_file raises ProcessingError when SharePoint returns 404."""
+    """delete_file raises ObjectNotFoundError when SharePoint returns 404."""
     connector = make_connector()
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -736,7 +743,7 @@ def test_delete_file_not_found() -> None:
             return_value=utils.build_response(status_code=404),
         ),
         pytest.raises(
-            ProcessingError, match="File not found in SharePoint for deletion"
+            ObjectNotFoundError, match="File not found in SharePoint for deletion"
         ),
     ):
         connector.delete_file()
