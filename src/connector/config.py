@@ -1,9 +1,8 @@
-"""Configuration models for the file movement plans and secrets."""
+"""Configuration models for the connection configurations and secrets."""
 
-from typing import TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, SecretStr, field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,12 +23,6 @@ class SharePointLibrary(BaseSettings):
 
     site: str
     library: str
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
 
     @field_validator("site")
     @classmethod
@@ -79,12 +72,6 @@ class S3Bucket(BaseSettings):
 
     bucket: str
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
     @field_validator("bucket")
     @classmethod
     def validate_bucket(cls, v: str) -> str:
@@ -123,23 +110,3 @@ class SecretConfig(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
-
-class MovementPlan(BaseModel):
-    """BaseModel for defining a source and destination for file movement.
-
-    Attributes:
-        source (str): A string defining the source file location.
-        destination (str): A string defining the destination file location.
-
-    """
-
-    source: str
-    destination: str
-
-
-class MovementPlanDict(TypedDict):
-    """TypedDict for defining the structure of a movement plan from SharePoint to S3."""
-
-    source: str
-    destination: str

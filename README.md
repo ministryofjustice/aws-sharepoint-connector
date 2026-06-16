@@ -10,10 +10,9 @@
 [![Python Type Check](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml)
 [![Release Container](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml)
 
-
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
-Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload from S3 to SharePoint (`write_to_sharepoint`). An engine is created once per run, and individual file movements are described by a list of `MovementPlan` objects specifying source and destination paths.
+Operates in two modes: (`write_to_s3`) to move from AWS S3 and SharePoint and (`write_to_sharepoint`) to do the reverse. Simply instantiate an engine via `create_engine` and iterate over the source files you want to move with the `run` method.
 
 ## Table of contents
 
@@ -22,9 +21,8 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [How to run](#how-to-run)
-	- [Programmatic API](#programmatic-api)
+  - [Programmatic API](#programmatic-api)
 - [Error handling and retries](#error-handling-and-retries)
-	- [Pre-flight Validation](#pre-flight-validation)
 - [How to modify or extend](#how-to-modify-or-extend)
 - [Troubleshooting](#troubleshooting)
 - [Security considerations](#security-considerations)
@@ -35,17 +33,15 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 
 ### High level process flow
 
-1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)` — authenticates to Azure Graph API at this point.
-2. Define movement plans with `create_movement_plan([{"source": ..., "destination": ...}])`, returning a list of `MovementPlan` objects.
-3. Call `engine.validate_plans(plans)` to run pre-flight checks on **all** plans before any transfers begin:
-	- **`write_to_sharepoint`**: verifies the S3 bucket is accessible, each source S3 key exists, and each destination SharePoint parent folder exists.
-	- **`write_to_s3`**: verifies the S3 bucket is accessible and each source SharePoint file exists.
-	- All failures are collected and reported together in a single `UploadError`, so the full set of problems is visible before anything is moved.
-4. For each `MovementPlan`, call `engine.run(plan.source, plan.destination)`:
-	- Download from the source system (SharePoint or S3).
-	- Upload to the destination system (S3 or SharePoint).
-	- Verify the destination file exists with matching byte size.
-5. Handle errors per file in your calling code.
+1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
+2. Identify the files you want to move, and their destination
+3. For each file, call `engine.run(source, destination)`:
+    - Calls `engine.validate_plans` to validate the plan before any transfers begin:
+    - Download from the source system (SharePoint or S3).
+    - Upload to the destination system (S3 or SharePoint).
+    - Verify transfer was successful by comparing byte size.
+    - Optionally delete the source file
+4. Handle errors per file in your calling code.
 
 ### Transfer Modes
 
@@ -54,34 +50,33 @@ Operates in two modes: download from SharePoint to S3 (`write_to_s3`), or upload
 
 ### Core Components
 
-- `src/connector/main.py`: Public API — `create_engine()` and `create_movement_plan()` factory functions.
+- `src/connector/main.py`: Public API — `create_engine()`
 - `src/connector/config.py`: Pydantic models for validated configuration.
 - `src/connector/engine.py`: Abstract transfer logic.
 - `src/connector/sharepoint.py`: SharePoint connector.
 - `src/connector/s3.py`: AWS S3 connector.
 - `src/connector/auth.py`: Azure authentication and Graph utilities.
-- `src/connector/utils.py`: HTTP retry logic.
+- `src/connector/utils.py`: Logger and HTTP retry logic.
 
 ## Configuration
 
-All configuration is parsed by the config classes in `src/connector/config.py` and can be supplied via:
-- Environment variables
-- Arguments passed directly to `create_engine()` and `create_movement_plan()`
-- A `.env` file
+Configuration is parsed by the config classes in `src/connector/config.py` which store
+the S3 bucket, Sharepoint site and library and Azure App secrets
 
 ### Required Environment Variables
 
-Can ONLY be provided as environment variables (or `.env` file).
+MUST be provided as secrets via airflow from AWS Secrets Manager.
+DO NOT store as plain text
 
 | Variable | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `SECRET_AZURE_TENANT_ID` | string | Azure tenant UUID for Graph API authentication |
 | `SECRET_AZURE_CLIENT_ID` | string | Azure app registration client ID |
 | `SECRET_AZURE_CLIENT_SECRET` | string | Azure app registration client secret (store in secret manager) |
 
-### Function Arguments
+### Required configuration variables
 
-Passed directly to `create_engine()` and `create_movement_plan()` in your calling code.
+Passed directly to `create_engine()` from your calling code
 
 **`create_engine(mode, sp_site, sp_library, s3_bucket)`**
 
@@ -92,23 +87,15 @@ Passed directly to `create_engine()` and `create_movement_plan()` in your callin
 | `sp_library` | string | SharePoint document library name (e.g. `Documents`) |
 | `s3_bucket` | string | S3 bucket name (without `s3://` prefix) |
 
-**`create_movement_plan(data_movement_plan)`**
+Passed to the engine's `run` method to identify a specific file to move
+
+**`run(source, destination, delete)`**
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `source` | string | Source file path (SharePoint path or S3 key, depending on mode) |
-| `destination` | string | Destination file path (S3 key or SharePoint path, depending on mode) |
-
-### Movement Plan Schema
-
-Each entry in the `data_movement_plan` list passed to `create_movement_plan()` is a plain `{"source": str, "destination": str}` dict.
-
-In `write_to_s3` mode:
-- `source` is the SharePoint file path relative to the library root (e.g. `reports/2026/daily_report.csv`)
-- `destination` is the full S3 key (e.g. `path/to/daily_report.csv`)
-
-In `write_to_sharepoint` mode the roles are reversed.
-
+| `source` | string | Source file path (SharePoint path or S3 key) |
+| `destination` | string | Destination file path (S3 key or SharePoint path) |
+| `delete` | bool | Flag for whether to delete source file after successful transfer |
 
 ### Example: SharePoint → S3 (single file)
 
@@ -124,15 +111,14 @@ engine = create_engine(
     sp_library="Documents",
     s3_bucket="my-bucket",
 )
-plans = create_movement_plan([
+plans = [
     {
         "source": "reports/2026/daily_report.csv",
         "destination": "path/to/daily_report.csv",
     }
-])
-engine.validate_plans(plans)
+]
 for plan in plans:
-    engine.run(plan.source, plan.destination)
+    engine.run(plan["source"], plan["destination"])
 ```
 
 ### Example: S3 → SharePoint (single file)
@@ -146,15 +132,14 @@ engine = create_engine(
     sp_library="Documents",
     s3_bucket="my-bucket",
 )
-plans = create_movement_plan([
+plans =
     {
         "source": "path/to/daily_report.csv",
         "destination": "reports/2026/daily_report.csv",
     }
-])
-engine.validate_plans(plans)
+]
 for plan in plans:
-    engine.run(plan.source, plan.destination)
+    engine.run(plan["source"], plan["destination"])
 ```
 
 ## Prerequisites
@@ -165,16 +150,17 @@ You will require a Sharepoint site to serve as the source or destination for fil
 
 ### Azure app registration
 
-An Azure app has to be registered in Entra ID. This will be bespoke to your project and provide the connection to the Sharepoint site and is what the connector will authenticate into via the secret key. To request a new Azure app and have it connected to your Sharepoint site, raise a demand request by following the instructions [here](https://user-guide.staff-identity.service.justice.gov.uk/documentation/guidance/appreg.html#application-registrations-sso). You can do this in terraform against the staff infrastructure authentication services repo (see [EM setup](https://github.com/ministryofjustice/staff-identity-idam-entra-infra/tree/main/terraform/envs/live/hmpps-electronic-monitoring-data) for an example), then post to [#staff-identity-authentication-services](https://moj.enterprise.slack.com/archives/C04AFS7TV7S).
+An Azure app has to be registered in Entra ID. This will be bespoke to your project and provide the connection to the Sharepoint site and is what the connector will authenticate into via the secret key. To request a new Azure app and have it connected to your Sharepoint site, raise a demand request by following the [instructions here](https://user-guide.staff-identity.service.justice.gov.uk/documentation/guidance/appreg.html#application-registrations-sso). You can do this in terraform against the staff infrastructure authentication services repo (see [EM setup](https://github.com/ministryofjustice/staff-identity-idam-entra-infra/tree/main/terraform/envs/live/hmpps-electronic-monitoring-data) for an example), then post to [#staff-identity-authentication-services](https://moj.enterprise.slack.com/archives/C04AFS7TV7S).
 
 The app will require these permissions:
+
 - `sites.selected`
 
 You will then need to speak to the File and Data Management team, who will grant your app access to the specific sharepoint sites you need access to.
 
 ### Azure app details & secret
 
-You can view your app registrations [here](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+You can view your [app registrations here](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
 
 Open up the app registration and the tenant ID will be available as `Directory (tenant) ID`.
 
@@ -219,11 +205,11 @@ uv run python -m pytest tests/e2e              # E2E tests (no real API calls)
 
 ### Programmatic API
 
-Import `create_engine` and `create_movement_plan` from the `connector` package.
-The Azure secret values must be present as environment variables (or in a `.env` file).
+Import `create_engine` from the `connector` package.
+The Azure secret values must be present as environment variables.
 
 ```python
-from connector import create_engine, create_movement_plan
+from connector import create_engine
 
 engine = create_engine(
     mode="write_to_s3",
@@ -232,7 +218,7 @@ engine = create_engine(
     s3_bucket="my-bucket",
 )
 
-plans = create_movement_plan([
+plans = [
     {
         "source": "reports/2026/daily_report.csv",
         "destination": "path/to/daily_report.csv",
@@ -241,36 +227,19 @@ plans = create_movement_plan([
         "source": "reports/2026/summary.csv",
         "destination": "path/to/summary.csv",
     },
-])
-
-# Pre-flight: verify all sources and destinations exist before transferring anything.
-# Raises UploadError listing every problem if any check fails.
-engine.validate_plans(plans)
+]
 
 for plan in plans:
     engine.run(plan.source, plan.destination)
 ```
 
+You can optionally use the `list_source_files` methods on the engines to obtain a list
+of all files in the S3 bucket or SharePoint library. This can be used to programmatically
+build the list of plans to iterate over.
+
 ## Error handling and retries
 
 The connector implements robust retry logic to handle transient failures.
-
-### Pre-flight Validation
-
-Before transferring any files, call `engine.validate_plans(plans)` to check that all sources and destinations are reachable. All checks run before any error is raised, so you see the complete list of problems in one go:
-
-```python
-try:
-    engine.validate_plans(plans)
-except UploadError as exc:
-    # exc contains every validation failure, e.g.:
-    # Pre-flight validation failed with 2 error(s):
-    #   - S3 object does not exist: s3://my-bucket/missing/file.csv
-    #   - Destination folder not found in SharePoint: 'reports/2025'
-    raise
-```
-
-This prevents partial transfers where some files succeed and others fail due to a misconfiguration that could have been detected upfront.
 
 ### Chunk Upload Strategy
 
@@ -278,10 +247,10 @@ For large files, uploads are split into **10 MB chunks**:
 
 - **Max 5 consecutive failures** per chunk before aborting the entire transfer
 - **Transient errors** (429 Too Many Requests, 5xx): retried with exponential backoff
-- **Permanent errors** (4xx excluding 429): immediately raised as `UploadError` without retry
+- **Permanent errors** (4xx excluding 429): immediately raised as `ProcessingError` without retry
 - **File pointer reset** on every retry to ensure data consistency
 
-Example: If a 50 MB file fails on chunk 3 of 5, the transfer aborts and raises `UploadError`.
+Example: If a 50 MB file fails on chunk 3 of 5, the transfer aborts and raises `ProcessingError`.
 
 ### HTTP Request Retries
 
@@ -294,16 +263,16 @@ All Graph API and HTTP calls use `request_with_retry()`:
 
 ### Batch Processing Behavior
 
-Batch iteration is handled by the calling code. The engine processes one file per `engine.run()` call and raises `UploadError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
+Batch iteration is handled by the calling code. The engine processes one file per `engine.run()` call and raises `ProcessingError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
 
 ## How to modify or extend
 
 ### 1) Add a new transfer mode
 
 1. Create a new engine class in `src/connector/engine.py` implementing:
-	 - `download_file(self, source: str) -> bytes`
-	 - `upload_file(self, content: bytes, destination: str) -> None`
-	 - `validate_plans(self, plans: list[MovementPlan]) -> None`
+    - `download_file(self, source: str) -> bytes`
+    - `upload_file(self, content: bytes, destination: str) -> None`
+    - `validate_plans(self, plans: list[dict[str, str]]) -> None`
 2. Register the engine in `MODE_MAP` in `src/connector/main.py`.
 3. Expand the `Literal` type for `mode` in `create_engine()` in `src/connector/main.py`.
 4. Add unit tests for success and failure paths, including `validate_plans`.
@@ -314,7 +283,6 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 2. Add validation if needed with a `field_validator`.
 3. Update `.env` docs and this README.
 4. Use the field in connector or engine logic.
-
 
 ## Troubleshooting
 

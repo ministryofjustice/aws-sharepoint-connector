@@ -2,13 +2,21 @@
 
 import logging
 from io import BytesIO
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
 import requests
 
-from connector.config import SecretConfig, SharePointLibrary
-from connector.exceptions import NoLibraryError, UploadError
+from connector.config import SecretConfig
+from connector.exceptions import (
+    FileSizeMismatchError,
+    IncorrectObjectTypeError,
+    NoLibraryError,
+    NoSiteError,
+    ObjectNotFoundError,
+    ProcessingError,
+)
 from connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -25,23 +33,18 @@ EXPECTED_BASE_URL = (
 )
 
 
-def make_connector(
-    secrets: SecretConfig | None = None,
-    library: SharePointLibrary | None = None,
-) -> SharePointConnector:
+def make_connector() -> SharePointConnector:
     """Create a SharePointConnector with patched HTTP calls."""
-    return SharePointConnector(
-        secrets=secrets or SecretConfig(),  # type: ignore[call-arg]
-        library=library or utils.make_sharepoint_library(),
-    )
+    with utils.sharepoint_connector_patches():
+        return SharePointConnector(
+            secrets=SecretConfig(),  # type: ignore[call-arg]
+            library=utils.make_sharepoint_library(),
+        )
 
 
 def test_sharepoint_connector_initialization() -> None:
     """Test that SharePointConnector sets up headers and drive_id on init."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     assert connector.headers == {
         "Authorization": "Bearer fake-token",
@@ -54,10 +57,8 @@ def test_sharepoint_connector_initialization() -> None:
 
 def test_set_graph_headers() -> None:
     """Test that set_graph_headers populates the correct auth headers."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
+    connector = make_connector()
     with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
         connector.set_graph_headers()
 
     assert connector.headers == {
@@ -68,10 +69,7 @@ def test_set_graph_headers() -> None:
 
 def test_get_site_id_success() -> None:
     """Test that get_site_id returns the site id and calls the correct URL."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     with patch(
         "connector.sharepoint.requests.get",
@@ -91,21 +89,50 @@ def test_get_site_id_success() -> None:
     }
 
 
-def test_get_site_id_missing_id_raises() -> None:
-    """Test that get_site_id raises UploadError when Graph omits 'id'."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+def test_get_site_id_missing_id() -> None:
+    """Test that get_site_id raises NoSiteError when Graph omits 'id'."""
+    connector = make_connector()
 
     with (
         patch(
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=200, json_body={}),
         ),
-        pytest.raises(UploadError, match="no site ID"),
+        pytest.raises(NoSiteError, match="no site ID"),
     ):
         connector.get_site_id()
+
+
+def test_get_drive_id_success() -> None:
+    """Test that get_drive_id returns the drive id and calls the correct URL."""
+    connector = make_connector()
+
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[
+            utils.mock_site_id_response(),
+            utils.mock_drive_id_response(content="complete"),
+        ],
+    ) as mock_get:
+        connector.set_drive_id()
+
+    assert connector.drive_id == "fake-drive-id"
+    assert mock_get.call_count == 2
+    assert mock_get.call_args_list[0].args[0] == (
+        "https://graph.microsoft.com/v1.0/sites/"
+        "justiceuk.sharepoint.com:/sites/analytics-site"
+    )
+    assert mock_get.call_args_list[0].kwargs["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+    assert mock_get.call_args_list[1].args[0] == (
+        "https://graph.microsoft.com/v1.0/sites/fake-site-id/drives"
+    )
+    assert mock_get.call_args_list[1].kwargs["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
 
 
 @pytest.mark.parametrize(
@@ -116,39 +143,34 @@ def test_get_site_id_missing_id_raises() -> None:
     ],
 )
 def test_set_drive_id_error(exception: Exception) -> None:
-    """Test that set_drive_id raises UploadError when drive retrieval fails."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
+    """Test that set_drive_id raises ProcessingError when drive retrieval fails."""
     with (
         utils.sharepoint_connector_patches(),
         patch(
             "connector.sharepoint.SharePointConnector.get_site_id",
             side_effect=exception,
         ),
-        pytest.raises(UploadError),
+        pytest.raises(ProcessingError),
     ):
-        make_connector(secrets)
+        make_connector()
 
 
-def test_update_with_file_path_sets_file_path_and_base_url() -> None:
-    """Test that update_with_file_path stores path and derives base_url."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
+def test_set_drive_id_no_library_error() -> None:
+    """Test that set_drive_id wraps NoLibraryError from auth.get_drive_id."""
+    with (
+        utils.sharepoint_connector_patches(),
+        patch(
+            "connector.auth.get_drive_id",
+            side_effect=NoLibraryError("Library 'Documents' not found on site 'x'"),
+        ),
+        pytest.raises(ProcessingError, match="Could not connect to SharePoint library"),
+    ):
+        make_connector()
 
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
 
-    connector.update_with_file_path(SP_FILE_PATH)
-
-    assert connector.file_path == SP_FILE_PATH
-    assert connector.base_url == EXPECTED_BASE_URL
-
-
-def test_set_base_url_encodes_path() -> None:
+def test_set_base_url() -> None:
     """Test that set_base_url constructs the expected Graph API base URL."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
     connector.set_base_url()
@@ -156,12 +178,19 @@ def test_set_base_url_encodes_path() -> None:
     assert connector.base_url == EXPECTED_BASE_URL
 
 
+def test_update_with_file_path() -> None:
+    """Test that update_with_file_path stores path and derives base_url."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    assert connector.file_path == SP_FILE_PATH
+    assert connector.base_url == EXPECTED_BASE_URL
+
+
 def test_set_upload_url() -> None:
     """Test that set_upload_url stores the correct upload URL."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -191,10 +220,7 @@ def test_set_upload_url() -> None:
 
 def test_set_download_url() -> None:
     """Test that set_download_url builds the correct content URL."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
     connector.set_download_url()
@@ -205,12 +231,178 @@ def test_set_download_url() -> None:
     )
 
 
+def test_list_files_success() -> None:
+    """list_files returns file names from the library root, excluding folders."""
+    connector = make_connector()
+    root_page = utils.mock_list_files_response(
+        file_names=["report.csv", "summary.xlsx"],
+        folder_names=["archive"],
+    )
+    archive_page = utils.mock_list_files_response(file_names=[])
+
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[root_page, archive_page],
+    ):
+        result = connector.list_files()
+    assert result == ["report.csv", "summary.xlsx"]
+
+
+def test_list_files_pagination() -> None:
+    """list_files follows @odata.nextLink to return all pages of results."""
+    page1 = utils.mock_list_files_response(
+        file_names=["a.csv"], next_link="https://graph.microsoft.com/v1.0/nextpage"
+    )
+    page2 = utils.mock_list_files_response(file_names=["b.csv", "c.csv"])
+    connector = make_connector()
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[page1, page2],
+    ):
+        result = connector.list_files()
+    assert result == ["a.csv", "b.csv", "c.csv"]
+
+
+def test_list_files_recurses_into_folders() -> None:
+    """list_files includes files found in nested folders."""
+    root_page = utils.mock_list_files_response(
+        file_names=[],
+        folder_names=["scenario_1"],
+    )
+    child_page = utils.mock_list_files_response(
+        file_names=["a.csv", "b.csv"],
+    )
+
+    connector = make_connector()
+    with patch(
+        "connector.sharepoint.requests.get",
+        side_effect=[root_page, child_page],
+    ):
+        result = connector.list_files()
+
+    assert result == ["scenario_1/a.csv", "scenario_1/b.csv"]
+
+
+def test_list_files_request_error() -> None:
+    """list_files raises ProcessingError when the listing request fails."""
+    connector = make_connector()
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("timeout"),
+        ),
+        pytest.raises(
+            ProcessingError, match="Failed to list files in SharePoint library"
+        ),
+    ):
+        connector.list_files()
+
+
+@pytest.mark.parametrize(
+    ("object_type", "object_name"),
+    [
+        ("file", SP_FILE_NAME),
+        ("folder", "2026"),
+    ],
+)
+def test_check_object_exists_success(
+    object_type: Literal["file", "folder"], object_name: str
+) -> None:
+    """check_object_exists does not raise when the object is present."""
+    connector = make_connector()
+    response = utils.mock_check_object_response(200, object_name, object_type)
+    with patch(
+        "connector.sharepoint.requests.get",
+        return_value=response,
+    ):
+        connector.check_object_exists(
+            f"reports/{object_name}", object_type
+        )  # should not raise
+
+
+@pytest.mark.parametrize(
+    ("object_type", "object_name", "match_message"),
+    [
+        ("file", SP_FILE_NAME, "File not found in SharePoint"),
+        ("folder", "2026", "Folder not found in SharePoint"),
+    ],
+)
+def test_check_object_exists_not_found(
+    object_type: Literal["file", "folder"], object_name: str, match_message: str
+) -> None:
+    """check_object_exists raises ObjectNotFoundError when the file is absent."""
+    connector = make_connector()
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            return_value=utils.build_response(status_code=404, json_body={}),
+        ),
+        pytest.raises(ObjectNotFoundError, match=match_message),
+    ):
+        connector.check_object_exists(object_name, object_type)
+
+
+@pytest.mark.parametrize(
+    ("object_type", "json_body", "input_path"),
+    [
+        (
+            "file",
+            {"name": "reports"},
+            "reports",
+        ),
+        (
+            "folder",
+            {"name": "daily_report.csv"},
+            "daily_report.csv",
+        ),
+    ],
+)
+def test_check_object_exists_incorrect_type(
+    object_type: Literal["file", "folder"],
+    json_body: dict[str, str],
+    input_path: str,
+) -> None:
+    """check_object_exists raises IncorrectObjectTypeError if path is wrong type."""
+    folder_as_file_response = utils.build_response(
+        status_code=200,
+        json_body=json_body,
+    )
+    with utils.sharepoint_connector_patches(
+        extra_get_side_effects=[folder_as_file_response],
+    ):
+        connector = make_connector()
+        with pytest.raises(
+            IncorrectObjectTypeError,
+            match=f"SharePoint path 'reports/{input_path}' exists but is not a"
+            f" {object_type}",
+        ):
+            connector.check_object_exists(f"reports/{input_path}", object_type)
+
+
+@pytest.mark.parametrize(
+    "object_type",
+    ["file", "folder"],
+)
+def test_check_object_exists_request_error(
+    object_type: Literal["file", "folder"],
+) -> None:
+    """check_object_exists raises ProcessingError on a network error for file check."""
+    connector = make_connector()
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(
+            ProcessingError, match=f"Failed to check SharePoint {object_type} existence"
+        ),
+    ):
+        connector.check_object_exists(SP_FILE_PATH, object_type)
+
+
 def test_fetch_file_success() -> None:
     """Test that fetch_file returns the response bytes."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
     connector.set_download_url()
@@ -221,15 +413,12 @@ def test_fetch_file_success() -> None:
     ):
         data = connector.fetch_file()
 
-    assert data == b'{"content": "fake-file-content"}'
+    assert data == b"fake-file-content"
 
 
 def test_fetch_file_not_found() -> None:
-    """Test that fetch_file raises UploadError when the file is missing."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    """Test that fetch_file raises ObjectNotFoundError when the file is missing."""
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
     connector.set_download_url()
@@ -239,17 +428,14 @@ def test_fetch_file_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.mock_fetch_file_response(404),
         ),
-        pytest.raises(UploadError, match="File not found in SharePoint"),
+        pytest.raises(ObjectNotFoundError, match="File not found in SharePoint"),
     ):
         connector.fetch_file()
 
 
 def test_fetch_file_request_error() -> None:
-    """Test that fetch_file raises UploadError on request errors."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    """Test that fetch_file raises ProcessingError on request errors."""
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
     connector.set_download_url()
@@ -259,7 +445,7 @@ def test_fetch_file_request_error() -> None:
             "connector.sharepoint.requests.get",
             side_effect=requests.RequestException("Mock request error"),
         ),
-        pytest.raises(UploadError, match="Failed to fetch file from SharePoint"),
+        pytest.raises(ProcessingError, match="Failed to fetch file from SharePoint"),
     ):
         connector.fetch_file()
 
@@ -285,13 +471,10 @@ def test_verify_uploaded_file_success(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that verify_uploaded_file succeeds when the uploaded file is present."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
     expected_size = 13
     file_name = file_path.rsplit("/", maxsplit=1)[-1]
 
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
-
+    connector = make_connector()
     connector.update_with_file_path(file_path)
 
     with (
@@ -306,7 +489,8 @@ def test_verify_uploaded_file_success(
         connector.verify_uploaded_file(expected_size=expected_size)
 
     assert (
-        f"Verified uploaded file '{file_name}' ({expected_size} bytes)" in caplog.text
+        f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
+        in caplog.text
     )
     assert mock_verify.call_count == 1
     assert mock_verify.call_args[0][0] == expected_verify_url
@@ -317,11 +501,8 @@ def test_verify_uploaded_file_success(
 
 
 def test_verify_uploaded_not_found() -> None:
-    """Test that verify_uploaded_file raises UploadError when the file is absent."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    """Test that verify_uploaded_file raises ObjectNotFoundError when file is absent."""
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -330,17 +511,14 @@ def test_verify_uploaded_not_found() -> None:
             "connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404),
         ),
-        pytest.raises(UploadError, match="Verification failed"),
+        pytest.raises(ObjectNotFoundError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
 
 def test_verify_uploaded_size_mismatch() -> None:
-    """Test that verify_uploaded_file raises UploadError when size does not match."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+    """Test verify_uploaded_file raises FileSizeMismatchError if size does not match."""
+    connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH)
 
@@ -352,14 +530,29 @@ def test_verify_uploaded_size_mismatch() -> None:
                 json_body={"name": SP_FILE_NAME, "size": 999, "file": {}},
             ),
         ),
-        pytest.raises(UploadError, match="Verification failed"),
+        pytest.raises(FileSizeMismatchError, match="Verification failed"),
+    ):
+        connector.verify_uploaded_file(expected_size=12)
+
+
+def test_verify_uploaded_file_request_error() -> None:
+    """Test that verify_uploaded_file raises ProcessingError on RequestException."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "connector.sharepoint.requests.get",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(ProcessingError, match="Failed to verify uploaded file"),
     ):
         connector.verify_uploaded_file(expected_size=12)
 
 
 def test_upload_stream_in_chunks_success() -> None:
     """Test that a small payload is uploaded in a single chunk."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
     payload = b"chunk-content"
 
     with (
@@ -380,7 +573,7 @@ def test_upload_stream_in_chunks_success() -> None:
             return_value=utils.mock_session_put_response(),
         ) as mock_put,
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
         connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
@@ -391,7 +584,6 @@ def test_upload_stream_in_chunks_success() -> None:
 
 def test_upload_stream_in_chunks_permanent_error_raises() -> None:
     """Test that a 400-range (non-429) response aborts the upload."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
     payload = b"chunk-content"
 
     with (
@@ -407,16 +599,15 @@ def test_upload_stream_in_chunks_permanent_error_raises() -> None:
             return_value=utils.mock_session_put_response(status_code=403),
         ),
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="permanent HTTP 403"):
+        with pytest.raises(ProcessingError, match="permanent HTTP 403"):
             connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
 
 
 def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
-    """Test that exceeding MAX_CHUNK_RETRIES raises UploadError."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
+    """Test that exceeding MAX_CHUNK_RETRIES raises ProcessingError."""
     payload = b"chunk-content"
 
     with (
@@ -432,35 +623,15 @@ def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
             side_effect=requests.exceptions.RequestException("network error"),
         ),
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="retries"):
+        with pytest.raises(ProcessingError, match="retries"):
             connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
-
-
-def test_verify_uploaded_file_request_error() -> None:
-    """Test that verify_uploaded_file raises UploadError on RequestException."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
-
-    connector.update_with_file_path(SP_FILE_PATH)
-
-    with (
-        patch(
-            "connector.sharepoint.requests.get",
-            side_effect=requests.RequestException("network error"),
-        ),
-        pytest.raises(UploadError, match="Failed to verify uploaded file"),
-    ):
-        connector.verify_uploaded_file(expected_size=12)
 
 
 def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -> None:
     """Test chunk upload resumes from server-reported position after Exception."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
     payload = b"0123456789abcdef"  # 16 bytes
     file_size = len(payload)
     resume_pos = 5
@@ -487,7 +658,7 @@ def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -
             ],
         ) as mock_put,
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
         connector.upload_stream_in_chunks(BytesIO(payload), file_size)
@@ -498,8 +669,7 @@ def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -
 
 
 def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> None:
-    """Test that a 5xx response exceeding MAX_CHUNK_RETRIES raises UploadError."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
+    """Test that a 5xx response exceeding MAX_CHUNK_RETRIES raises ProcessingError."""
     payload = b"chunk-content"
     file_size = len(payload)
     # MAX_CHUNK_RETRIES=5: 6 puts all fail; 6 Session.get calls (1 initial + 5 resumes)
@@ -519,16 +689,15 @@ def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> Non
             side_effect=session_put_responses,
         ),
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
-        with pytest.raises(UploadError, match="retries"):
+        with pytest.raises(ProcessingError, match="retries"):
             connector.upload_stream_in_chunks(BytesIO(payload), file_size)
 
 
 def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> None:
     """Test chunk upload resumes from server-reported position after a 5xx response."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
     payload = b"0123456789abcdef"  # 16 bytes
     file_size = len(payload)
     resume_pos = 5
@@ -555,7 +724,7 @@ def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> 
             ],
         ) as mock_put,
     ):
-        connector = make_connector(secrets)
+        connector = make_connector()
         connector.update_with_file_path(SP_FILE_PATH)
         connector.set_upload_url()
         connector.upload_stream_in_chunks(BytesIO(payload), file_size)
@@ -564,127 +733,56 @@ def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> 
     assert len(mock_put.call_args_list[1][1]["data"]) == file_size - resume_pos
 
 
-def test_set_drive_id_no_library_error() -> None:
-    """Test that set_drive_id wraps NoLibraryError from auth.get_drive_id."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with (
-        utils.sharepoint_connector_patches(),
-        patch(
-            "connector.auth.get_drive_id",
-            side_effect=NoLibraryError("Library 'Documents' not found on site 'x'"),
-        ),
-        pytest.raises(UploadError, match="Could not connect to SharePoint library"),
-    ):
-        make_connector(secrets)
-
-
-def test_check_file_exists_success() -> None:
-    """Test that check_file_exists completes without raising when file is present."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[utils.mock_check_file_response(200, SP_FILE_NAME)],
-    ):
-        connector = make_connector(secrets)
-        connector.check_file_exists(SP_FILE_PATH)  # should not raise
-
-
-def test_check_file_exists_not_found() -> None:
-    """Test that check_file_exists raises UploadError when the file is absent."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with (
-        utils.sharepoint_connector_patches(
-            extra_get_side_effects=[utils.build_response(status_code=404)],
-        ),
-    ):
-        connector = make_connector(secrets)
-        with pytest.raises(UploadError, match="Source file not found in SharePoint"):
-            connector.check_file_exists(SP_FILE_PATH)
-
-
-def test_check_file_exists_path_is_folder() -> None:
-    """Test that check_file_exists raises UploadError when the path is a folder."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    folder_as_file_response = utils.build_response(
-        status_code=200,
-        json_body={"name": "reports", "folder": {"childCount": 2}},
+def test_delete_file_success() -> None:
+    """delete_file sends a DELETE request to the expected SharePoint URL."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+    expected_url = (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+        "/root:/reports/2026/file1.csv:?$select=name,file"
     )
-    with (
-        utils.sharepoint_connector_patches(
-            extra_get_side_effects=[folder_as_file_response],
-        ),
-    ):
-        connector = make_connector(secrets)
-        with pytest.raises(UploadError, match="is not a file"):
-            connector.check_file_exists(SP_FILE_PATH)
+
+    with patch(
+        "connector.sharepoint.requests.delete",
+        return_value=utils.build_response(status_code=204),
+    ) as mock_delete:
+        connector.delete_file()
+
+    assert mock_delete.call_count == 1
+    assert mock_delete.call_args[0][0] == expected_url
+    assert mock_delete.call_args[1]["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
 
 
-def test_check_file_exists_request_error() -> None:
-    """Test that check_file_exists raises UploadError on a network error."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
+def test_delete_file_not_found() -> None:
+    """delete_file raises ObjectNotFoundError when SharePoint returns 404."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "connector.sharepoint.requests.delete",
+            return_value=utils.build_response(status_code=404),
+        ),
+        pytest.raises(
+            ObjectNotFoundError, match="File not found in SharePoint for deletion"
+        ),
+    ):
+        connector.delete_file()
+
+
+def test_delete_file_request_error() -> None:
+    """delete_file raises ProcessingError when the DELETE request fails."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "connector.sharepoint.requests.delete",
             side_effect=requests.RequestException("network error"),
         ),
-        pytest.raises(UploadError, match="Failed to check SharePoint file existence"),
+        pytest.raises(ProcessingError, match="Failed to delete file from SharePoint"),
     ):
-        connector.check_file_exists(SP_FILE_PATH)
-
-
-def test_check_folder_exists_success() -> None:
-    """Test that check_folder_exists completes when folder is present."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with utils.sharepoint_connector_patches(
-        extra_get_side_effects=[utils.mock_check_folder_response(200, "2026")],
-    ):
-        connector = make_connector(secrets)
-        connector.check_folder_exists("reports/2026")  # should not raise
-
-
-def test_check_folder_exists_not_found() -> None:
-    """Test that check_folder_exists raises UploadError when the folder is absent."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with (
-        utils.sharepoint_connector_patches(
-            extra_get_side_effects=[utils.build_response(status_code=404)],
-        ),
-    ):
-        connector = make_connector(secrets)
-        with pytest.raises(
-            UploadError, match="Destination folder not found in SharePoint"
-        ):
-            connector.check_folder_exists("reports/2026")
-
-
-def test_check_folder_exists_path_is_file() -> None:
-    """Test that check_folder_exists raises UploadError when the path is a file."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    file_as_folder_response = utils.build_response(
-        status_code=200,
-        json_body={"name": "daily_report.csv", "file": {}},
-    )
-    with (
-        utils.sharepoint_connector_patches(
-            extra_get_side_effects=[file_as_folder_response],
-        ),
-    ):
-        connector = make_connector(secrets)
-        with pytest.raises(UploadError, match="is not a folder"):
-            connector.check_folder_exists("reports/2026")
-
-
-def test_check_folder_exists_request_error() -> None:
-    """Test that check_folder_exists raises UploadError on a network error."""
-    secrets = SecretConfig()  # type: ignore[call-arg]
-    with utils.sharepoint_connector_patches():
-        connector = make_connector(secrets)
-    with (
-        patch(
-            "connector.sharepoint.requests.get",
-            side_effect=requests.RequestException("network error"),
-        ),
-        pytest.raises(UploadError, match="Failed to check SharePoint folder existence"),
-    ):
-        connector.check_folder_exists("reports/2026")
+        connector.delete_file()
