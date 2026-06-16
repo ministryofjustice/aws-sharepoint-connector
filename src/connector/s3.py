@@ -3,9 +3,12 @@
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from connector.exceptions import UploadError
+from connector.utils import setup_logger
+
+log = setup_logger()
 
 
 class S3Connector(BaseModel):
@@ -15,15 +18,55 @@ class S3Connector(BaseModel):
 
     client: Any  # boto3 client; typed as Any because boto3.client is a factory function
     bucket: str
-    key: str
+    key: str = Field(default="", init=False)  # set per-file via update_with_key()
+
+    def update_with_key(self, key: str) -> None:
+        """Set the S3 object key for the current file operation."""
+        self.key = key
+
+    def list_objects(self, prefix: str = "") -> list[str]:
+        """List all object keys in the S3 bucket, optionally filtered by prefix.
+
+        Handles pagination automatically; all matching keys are returned regardless
+        of bucket size.
+
+        Args:
+            prefix (str): Optional key prefix to filter results
+                (e.g. ``"reports/2026/"``). Defaults to ``""`` (list all objects).
+
+        Returns:
+            list[str]: All object keys in the bucket matching the given prefix.
+
+        Raises:
+            UploadError: If the listing request fails.
+
+        """
+        log.info("Listing objects in s3://%s/%s...", self.bucket, prefix)
+        keys: list[str] = []
+        kwargs: dict[str, Any] = {"Bucket": self.bucket}
+        if prefix:
+            kwargs["Prefix"] = prefix
+        try:
+            while True:
+                response = self.client.list_objects_v2(**kwargs)
+                keys.extend(obj["Key"] for obj in response.get("Contents", []))
+                if not response.get("IsTruncated"):
+                    break
+                kwargs["ContinuationToken"] = response["NextContinuationToken"]
+        except (BotoCoreError, ClientError) as exc:
+            err = f"Failed to list objects in s3://{self.bucket}: {exc}"
+            raise UploadError(err) from exc
+        log.info("Found %d object(s) in s3://%s/%s.", len(keys), self.bucket, prefix)
+        return keys
 
     def download_from_s3(self) -> bytes:
         """Download an object from S3 and return its content as bytes.
 
-        Args:
-            None
         Returns:
             bytes: The content of the S3 object as bytes.
+
+        Raises:
+            UploadError: If the download fails.
 
         """
         try:

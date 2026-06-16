@@ -30,6 +30,7 @@ class Engine(ABC):
     library: SharePointLibrary
     bucket: S3Bucket
     sharepoint_connector: SharePointConnector = field(init=False)
+    s3_connector: S3Connector = field(init=False)
     s3_client: Any = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -39,6 +40,13 @@ class Engine(ABC):
         self.sharepoint_connector = SharePointConnector(
             secrets=self.secrets, library=self.library
         )
+        self.s3_connector = S3Connector(
+            client=self.s3_client, bucket=self.bucket.bucket
+        )
+
+    @abstractmethod
+    def list_source_files(self) -> list[str]:
+        """List files available in the source storage."""
 
     @abstractmethod
     def download_file(self, source: str) -> bytes:
@@ -89,6 +97,10 @@ class Engine(ABC):
 class UploadToSharePointEngine(Engine):
     """Engine for uploading files from S3 to SharePoint."""
 
+    def list_source_files(self) -> list[str]:
+        """List all object keys in the S3 source bucket."""
+        return self.s3_connector.list_objects()
+
     def download_file(self, source: str) -> bytes:
         """Download a file from S3 and return its content as bytes.
 
@@ -103,12 +115,8 @@ class UploadToSharePointEngine(Engine):
 
         """
         log.info("Downloading s3://%s/%s...", self.bucket.bucket, source)
-        s3_connector = S3Connector(
-            client=self.s3_client,
-            bucket=self.bucket.bucket,
-            key=source,
-        )
-        return s3_connector.download_from_s3()
+        self.s3_connector.update_with_key(source)
+        return self.s3_connector.download_from_s3()
 
     def upload_file(self, content: bytes, destination: str) -> None:
         """Upload a file to SharePoint.
@@ -153,26 +161,21 @@ class UploadToSharePointEngine(Engine):
         errors: list[str] = []
 
         try:
-            S3Connector(
-                client=self.s3_client, bucket=self.bucket.bucket, key=""
-            ).check_bucket_exists()
+            self.s3_connector.check_bucket_exists()
         except UploadError as exc:
             errors.append(str(exc))
 
         for plan in plans:
             try:
-                S3Connector(
-                    client=self.s3_client,
-                    bucket=self.bucket.bucket,
-                    key=plan.source,
-                ).check_object_exists()
+                self.s3_connector.update_with_key(plan.source)
+                self.s3_connector.check_object_exists()
             except UploadError as exc:
                 errors.append(str(exc))
 
             folder = str(Path(plan.destination).parent)
             if folder and folder != ".":
                 try:
-                    self.sharepoint_connector.check_folder_exists(folder)
+                    self.sharepoint_connector.check_object_exists(folder, "folder")
                 except UploadError as exc:
                     errors.append(str(exc))
 
@@ -189,6 +192,10 @@ class UploadToSharePointEngine(Engine):
 
 class UploadToS3Engine(Engine):
     """Engine for uploading files from SharePoint to S3."""
+
+    def list_source_files(self) -> list[str]:
+        """List all file paths in the SharePoint source library."""
+        return self.sharepoint_connector.list_files()
 
     def download_file(self, source: str) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
@@ -235,13 +242,9 @@ class UploadToS3Engine(Engine):
             self.bucket.bucket,
             destination,
         )
-        s3_connector = S3Connector(
-            client=self.s3_client,
-            bucket=self.bucket.bucket,
-            key=destination,
-        )
-        s3_connector.upload_to_s3(content)
-        s3_connector.verify_uploaded_object(expected_size=len(content))
+        self.s3_connector.update_with_key(destination)
+        self.s3_connector.upload_to_s3(content)
+        self.s3_connector.verify_uploaded_object(expected_size=len(content))
         log.info("S3 upload verification succeeded.")
 
     def validate_plans(self, plans: list[MovementPlan]) -> None:
@@ -266,15 +269,13 @@ class UploadToS3Engine(Engine):
         errors: list[str] = []
 
         try:
-            S3Connector(
-                client=self.s3_client, bucket=self.bucket.bucket, key=""
-            ).check_bucket_exists()
+            self.s3_connector.check_bucket_exists()
         except UploadError as exc:
             errors.append(str(exc))
 
         for plan in plans:
             try:
-                self.sharepoint_connector.check_file_exists(plan.source)
+                self.sharepoint_connector.check_object_exists(plan.source, "file")
             except UploadError as exc:
                 errors.append(str(exc))
 

@@ -141,6 +141,31 @@ def mock_check_folder_response(status_code: int, folder_name: str) -> Response:
     )
 
 
+def mock_list_files_response(
+    file_names: list[str],
+    folder_names: list[str] | None = None,
+    next_link: str | None = None,
+) -> Response:
+    """Mock response for SharePointConnector.list_files (Graph /children endpoint).
+
+    Args:
+        file_names: File names to include in the response (no ``folder`` facet).
+        folder_names: Folder names to include; these should be filtered out by
+            ``list_files``.
+        next_link: If set, included as ``@odata.nextLink`` to simulate pagination.
+
+    """
+    items: list[dict[str, Any]] = [{"name": name} for name in file_names]
+    if folder_names:
+        items.extend(
+            {"name": name, "folder": {"childCount": 0}} for name in folder_names
+        )
+    body: dict[str, Any] = {"value": items}
+    if next_link:
+        body["@odata.nextLink"] = next_link
+    return build_response(json_body=body)
+
+
 @contextmanager
 def sharepoint_connector_patches(
     extra_post_side_effects: list[Response] | None = None,
