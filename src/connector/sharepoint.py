@@ -482,8 +482,6 @@ class SharePointConnector(BaseModel):
                 )
                 last_logged_pct = pct
 
-        self.verify_uploaded_file(expected_size=file_size)
-
     def delete_file(self) -> None:
         """Delete a file from SharePoint.
 

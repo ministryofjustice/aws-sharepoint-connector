@@ -7,7 +7,6 @@ from typing import Any, Literal
 from unittest.mock import Mock, patch
 
 import boto3
-import pandas as pd
 from azure.core.credentials import AccessToken
 from requests import Response
 
@@ -81,11 +80,6 @@ def mock_drive_id_response(
     return build_response(json_body={})
 
 
-def mock_token_response() -> Response:
-    """Mock response for get_azure_token."""
-    return build_response(json_body={"access_token": "fake-token", "expires_in": 3600})
-
-
 def mock_site_id_response() -> Response:
     """Mock response for get_site_id."""
     return build_response(json_body={"id": "fake-site-id"})
@@ -101,11 +95,17 @@ def mock_session_put_response(status_code: int = 200) -> Response:
     return build_response(status_code=status_code)
 
 
-def mock_fetch_file_response(status_code: int) -> Response:
-    """Mock response for fetch_file."""
-    return build_response(
-        json_body={"content": "fake-file-content"}, status_code=status_code
-    )
+def mock_fetch_file_response(
+    status_code: int,
+    content: bytes = b"fake-file-content",
+    content_type: str = "application/octet-stream",
+) -> Response:
+    """Mock Graph /content response for SharePointConnector.fetch_file."""
+    response = Response()
+    response.status_code = status_code
+    response._content = content
+    response.headers["Content-Type"] = content_type
+    return response
 
 
 def mock_verify_uploaded_file_response(
@@ -125,18 +125,20 @@ def mock_get_next_start_response(start: int = 0, end: int = 10) -> Response:
     return build_response(json_body={"nextExpectedRanges": [f"{start}-{end}"]})
 
 
-def mock_check_file_response(status_code: int, file_name: str) -> Response:
-    """Mock response for check_file_exists — returns a file item metadata response."""
-    return build_response(
-        json_body={"name": file_name, "file": {}},
-        status_code=status_code,
-    )
+def mock_check_object_response(
+    status_code: int,
+    object_name: str,
+    object_type: Literal["file", "folder"],
+) -> Response:
+    """Mock response for SharePointConnector.check_object_exists."""
+    object_facet: dict[str, Any]
+    if object_type == "file":
+        object_facet = {"file": {}}
+    else:
+        object_facet = {"folder": {"childCount": 0}}
 
-
-def mock_check_folder_response(status_code: int, folder_name: str) -> Response:
-    """Mock response for check_folder_exists — returns a folder metadata response."""
     return build_response(
-        json_body={"name": folder_name, "folder": {"childCount": 0}},
+        json_body={"name": object_name, **object_facet},
         status_code=status_code,
     )
 
@@ -211,14 +213,3 @@ def sharepoint_connector_patches(
         ) as mock_post,
     ):
         yield mock_token, mock_get, mock_post
-
-
-def create_test_csv() -> pd.DataFrame:
-    """Return a simple DataFrame to use as test CSV content."""
-    return pd.DataFrame(
-        {
-            "Column1": ["Value1", "Value2", "Value3"],
-            "Column2": [10, 20, 30],
-            "Column3": ["A", "B", "C"],
-        }
-    )

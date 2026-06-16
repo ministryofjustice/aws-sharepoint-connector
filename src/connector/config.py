@@ -25,12 +25,6 @@ class SharePointLibrary(BaseSettings):
     site: str
     library: str
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
     @field_validator("site")
     @classmethod
     def validate_site(cls, v: str) -> str:
@@ -78,12 +72,6 @@ class S3Bucket(BaseSettings):
     """
 
     bucket: str
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
 
     @field_validator("bucket")
     @classmethod

@@ -146,6 +146,7 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), len(content)
         )
+        self.sharepoint_connector.verify_uploaded_file(expected_size=len(content))
 
     def delete_source_file(self, source: str) -> None:
         """Delete a file from S3."""
@@ -226,20 +227,14 @@ class UploadToS3Engine(Engine):
             UploadError: If the SharePoint download fails.
 
         """
-        try:
-            log.info(
-                "Downloading '%s' from SharePoint library '%s'...",
-                source,
-                self.library.library,
-            )
-            self.sharepoint_connector.update_with_file_path(source)
-            self.sharepoint_connector.set_download_url()
-            return self.sharepoint_connector.fetch_file()
-        except UploadError:
-            raise
-        except Exception as exc:
-            err = f"Failed to download file from SharePoint: {exc}"
-            raise UploadError(err) from exc
+        log.info(
+            "Downloading '%s' from SharePoint library '%s'...",
+            source,
+            self.library.library,
+        )
+        self.sharepoint_connector.update_with_file_path(source)
+        self.sharepoint_connector.set_download_url()
+        return self.sharepoint_connector.fetch_file()
 
     def upload_file(self, content: bytes, destination: str) -> None:
         """Upload a file to S3 and verify the uploaded object.
