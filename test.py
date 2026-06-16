@@ -4,6 +4,7 @@ import boto3
 
 from connector import create_engine
 from connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from connector.exceptions import ProcessingError
 
 
 def run_plans(
@@ -57,14 +58,18 @@ def main() -> None:
 
     scenario_1_files = to_s3_engine.list_source_files()
 
-    if scenario_1_files == [
-        "scenario_1/sample_sp_file_1.csv",
-        "scenario_1/sample_sp_file_2.csv",
-        "scenario_1/sample_sp_file_3.csv",
-        "scenario_1/sample_sp_file_4.csv",
-        "scenario_1/sample_sp_file_5.csv",
-        "scenario_1/sample_sp_file_6.csv",
-    ]:
+    if all(
+        file
+        in [
+            "scenario_1/sample_sp_file_1.csv",
+            "scenario_1/sample_sp_file_2.csv",
+            "scenario_1/sample_sp_file_3.csv",
+            "scenario_1/sample_sp_file_4.csv",
+            "scenario_1/sample_sp_file_5.csv",
+            "scenario_1/sample_sp_file_6.csv",
+        ]
+        for file in scenario_1_files
+    ):
         print("Test passed: All files are present in S3.")
     else:
         print("Test failed: Some files are missing in S3.")
@@ -82,8 +87,8 @@ def main() -> None:
 
     run_plans(scenario_2_plan, to_s3_engine, delete=True)
 
-    scenario_2_dest_files = to_s3_engine.list_source_files()
-    scenario_2_source_files = to_sharepoint_engine.list_source_files()
+    scenario_2_dest_files = to_sharepoint_engine.list_source_files()
+    scenario_2_source_files = to_s3_engine.list_source_files()
 
     if all(
         file in scenario_2_dest_files
@@ -114,6 +119,8 @@ def main() -> None:
     ):
         print("Test failed: Some files are still present in SharePoint.")
         print("Found:", scenario_2_source_files)
+    else:
+        print("Test passed: All files have been deleted from SharePoint.")
 
     ### Scenario 3: Move some files to different locations & delete from S3
     print(
@@ -142,9 +149,9 @@ def main() -> None:
     if all(
         file in scenario_3_destination_files
         for file in [
-            "scenario_3//1/sample_sp_file_1.csv",
-            "scenario_3//2/sample_sp_file_2.csv",
-            "scenario_3//3/sample_sp_file_3.csv",
+            "scenario_3/1/sample_sp_file_1.csv",
+            "scenario_3/2/sample_sp_file_2.csv",
+            "scenario_3/3/sample_sp_file_3.csv",
         ]
     ):
         print("Test passed: All files are present in SharePoint.")
@@ -162,6 +169,8 @@ def main() -> None:
     ):
         print("Test failed: Some files are still present in S3.")
         print("Found:", scenario_3_source_files)
+    else:
+        print("Test passed: All files have been deleted from S3.")
 
     ### Scenario 4: Invalid plans
 
@@ -174,7 +183,7 @@ def main() -> None:
     try:
         run_plans(invalid_s3_key_plan, to_sharepoint_engine)
         print("Test failed: Expected error for invalid S3 key was not raised.")
-    except ProcessLookupError as exc:
+    except ProcessingError as exc:
         print(f"Test passed: Caught expected error for invalid S3 key: {exc}")
 
     invalid_sp_folder_plan = [
@@ -188,7 +197,7 @@ def main() -> None:
         print(
             "Test failed: Expected error for invalid SharePoint folder was not raised."
         )
-    except ProcessLookupError as exc:
+    except ProcessingError as exc:
         print(
             f"Test passed: Caught expected error for invalid SharePoint folder: {exc}"
         )
@@ -202,10 +211,8 @@ def main() -> None:
     try:
         run_plans(invalid_sp_file_plan, to_sharepoint_engine)
         print("Test failed: Expected error for invalid SharePoint file was not raised.")
-    except ProcessLookupError as exc:
-        print(
-            f"Test passed: Caught expected error for invalid SharePoint folder: {exc}"
-        )
+    except ProcessingError as exc:
+        print(f"Test passed: Caught expected error for invalid SharePoint file: {exc}")
 
     invalid_bucket_engine = create_engine(
         mode="write_to_sharepoint",
@@ -224,7 +231,7 @@ def main() -> None:
     try:
         run_plans(invalid_s3_bucket_plan, invalid_bucket_engine)
         print("Test failed: Expected error for invalid S3 bucket was not raised.")
-    except ProcessLookupError as exc:
+    except ProcessingError as exc:
         print(f"Test passed: Caught expected error for invalid S3 bucket: {exc}")
 
 

@@ -543,7 +543,6 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the file cannot be deleted due to an HTTP error.
 
         """
-        log.info("Deleting source file '%s' from SharePoint...", self.base_url)
         delete_url = f"{self.base_url}?$select=name,file"
         try:
             resp = request_with_retry(
@@ -557,6 +556,3 @@ class SharePointConnector(BaseModel):
             err = f"File not found in SharePoint for deletion: '{self.base_url}'"
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
-        log.info(
-            "Successfully deleted source file '%s' from SharePoint.", self.base_url
-        )
