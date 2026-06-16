@@ -4,7 +4,7 @@ build-backend = "pdm.backend"
 
 [project]
 name = "aws-sharepoint-connector"
-version = "1.0.0"
+version = "1.2.0"
 description = "Provides a connector via Graph API between AWS and SharePoint"
 authors = [
     { name = "Philip Sinfield"},
@@ -14,7 +14,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-identity>=1.24.0",
-    "boto3>=1.40.8",
+    "boto3>=1.43.22",
     "pydantic-settings>=2.11.0",
     "pydantic>=2.12.3",
     "requests>=2.32.4",
@@ -41,9 +41,6 @@ package = true
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-
-[project.scripts]
-connector = "connector.main:run"
 
 [tool.mypy]
 strict = true
