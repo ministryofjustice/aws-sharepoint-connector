@@ -26,7 +26,7 @@ Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
 
 [dependency-groups]
 dev = [
-    "mypy>=1.20.1",
+    "mypy>=2.1.0",
     "ruff>=0.15.12",
 ]
 test = [

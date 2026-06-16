@@ -22,9 +22,8 @@ def run_plans(
         )
 
 
-def main() -> None:
-    """Run the test scenarios for transferring files between S3 and SharePoint."""
-    ### Set up files and engines
+def setup_test_environment() -> tuple[UploadToSharePointEngine, UploadToS3Engine]:
+    """Set up test files in S3 and initialise engines."""
     s3 = boto3.client("s3")
     for i in range(1, 7):
         file_name = f"source/sample_s3_file_{i}.csv"
@@ -34,21 +33,27 @@ def main() -> None:
             Body=f"Sample data for file {i}",
         )
 
-    to_sharepoint_engine = create_engine(
+    to_sharepoint_engine: UploadToSharePointEngine = create_engine(  # type: ignore[assignment]
         mode="write_to_sharepoint",
         sp_site=os.environ["SP_SITE"],
         sp_library=os.environ["SP_LIBRARY"],
         s3_bucket=os.environ["S3_BUCKET"],
     )
 
-    to_s3_engine = create_engine(
+    to_s3_engine: UploadToS3Engine = create_engine(  # type: ignore[assignment]
         mode="write_to_s3",
         sp_site=os.environ["SP_SITE"],
         sp_library=os.environ["SP_LIBRARY"],
         s3_bucket=os.environ["S3_BUCKET"],
     )
 
-    ### Scenario 1: Write all files to SharePoint
+    return to_sharepoint_engine, to_s3_engine
+
+
+def scenario_1(
+    to_sharepoint_engine: UploadToSharePointEngine, to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 1: Write all files to SharePoint."""
     print("Starting Scenario 1: Writing all files to SharePoint")
     scenario_1_plan = [
         {
@@ -79,7 +84,11 @@ def main() -> None:
         print("Test failed: Some files are missing in SharePoint.")
         print("Found:", scenario_1_files)
 
-    ### Scenario 2: Write all files back to S3
+
+def scenario_2(
+    to_sharepoint_engine: UploadToSharePointEngine, to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 2: Write all files back to S3."""
     print("Starting Scenario 2: Writing all files back to S3")
     scenario_2_plan = [
         {
@@ -126,7 +135,11 @@ def main() -> None:
     else:
         print("Test passed: All files have been deleted from SharePoint.")
 
-    ### Scenario 3: Move some files to different locations & delete from S3
+
+def scenario_3(
+    to_sharepoint_engine: UploadToSharePointEngine, to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 3: Move some files to different locations & delete from S3."""
     print("Starting Scenario 3: Moving files to different locations & deleting from S3")
     scenario_3_plan = [
         {
@@ -174,8 +187,12 @@ def main() -> None:
     else:
         print("Test passed: All files have been deleted from S3.")
 
-    ### Scenario 4: Invalid plans
 
+def scenario_4(
+    to_sharepoint_engine: UploadToSharePointEngine, to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 4: Invalid plans."""
+    print("Starting Scenario 4: Testing invalid plans")
     invalid_s3_key_plan = [
         {
             "source": "invalid/key.csv",
@@ -235,6 +252,24 @@ def main() -> None:
         print("Test failed: Expected error for invalid S3 bucket was not raised.")
     except ProcessingError as exc:
         print(f"Test passed: Caught expected error for invalid S3 bucket: {exc}")
+
+
+def main() -> None:
+    """Run the test scenarios for transferring files between S3 and SharePoint."""
+    ### Set up files and engines
+    to_sharepoint_engine, to_s3_engine = setup_test_environment()
+
+    ### Scenario 1: Write all files to SharePoint
+    scenario_1(to_sharepoint_engine, to_s3_engine)
+
+    ### Scenario 2: Write all files back to S3
+    scenario_2(to_sharepoint_engine, to_s3_engine)
+
+    ### Scenario 3: Move some files to different locations & delete from S3
+    scenario_3(to_sharepoint_engine, to_s3_engine)
+
+    ### Scenario 4: Invalid plans
+    scenario_4(to_sharepoint_engine, to_s3_engine)
 
 
 if __name__ == "__main__":
