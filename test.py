@@ -1,3 +1,5 @@
+"""Test file."""
+
 import os
 
 import boto3
@@ -13,6 +15,7 @@ def run_plans(
     *,
     delete: bool = False,
 ) -> None:
+    """Run a list of file transfer plans using the given engine."""
     for plan in plans:
         engine.run(
             source=plan["source"], destination=plan["destination"], delete=delete
@@ -20,6 +23,7 @@ def run_plans(
 
 
 def main() -> None:
+    """Run the test scenarios for transferring files between S3 and SharePoint."""
     ### Set up files and engines
     s3 = boto3.client("s3")
     for i in range(1, 7):
@@ -70,9 +74,9 @@ def main() -> None:
         ]
         for file in scenario_1_files
     ):
-        print("Test passed: All files are present in S3.")
+        print("Test passed: All files are present in SharePoint.")
     else:
-        print("Test failed: Some files are missing in S3.")
+        print("Test failed: Some files are missing in SharePoint.")
         print("Found:", scenario_1_files)
 
     ### Scenario 2: Write all files back to S3
@@ -123,21 +127,19 @@ def main() -> None:
         print("Test passed: All files have been deleted from SharePoint.")
 
     ### Scenario 3: Move some files to different locations & delete from S3
-    print(
-        "Starting Scenario 3: Moving some files to different locations & deleting from S3"
-    )
+    print("Starting Scenario 3: Moving files to different locations & deleting from S3")
     scenario_3_plan = [
         {
-            "source": f"scenario_2/sample_s3_file_{1}.csv",
-            "destination": f"scenario_3//1/sample_sp_file_{1}.csv",
+            "source": "scenario_2/sample_s3_file_1.csv",
+            "destination": "scenario_3/1/sample_sp_file_1.csv",
         },
         {
-            "source": f"scenario_2/sample_s3_file_{2}.csv",
-            "destination": f"scenario_3//2/sample_sp_file_{2}.csv",
+            "source": "scenario_2/sample_s3_file_2.csv",
+            "destination": "scenario_3/2/sample_sp_file_2.csv",
         },
         {
-            "source": f"scenario_2/sample_s3_file_{3}.csv",
-            "destination": f"scenario_3//3/sample_sp_file_{3}.csv",
+            "source": "scenario_2/sample_s3_file_3.csv",
+            "destination": "scenario_3/3/sample_sp_file_3.csv",
         },
     ]
 
@@ -204,12 +206,12 @@ def main() -> None:
 
     invalid_sp_file_plan = [
         {
-            "source": "scenario_3//1/invalid_file.csv",
+            "source": "scenario_3/1/invalid_file.csv",
             "destination": "scenario_4/invalid_file.csv",
         },
     ]
     try:
-        run_plans(invalid_sp_file_plan, to_sharepoint_engine)
+        run_plans(invalid_sp_file_plan, to_s3_engine)
         print("Test failed: Expected error for invalid SharePoint file was not raised.")
     except ProcessingError as exc:
         print(f"Test passed: Caught expected error for invalid SharePoint file: {exc}")
