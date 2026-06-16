@@ -30,7 +30,7 @@ dev = [
     "ruff>=0.15.12",
 ]
 test = [
-    "moto>=5.1.22",
+    "moto>=5.2.0",
     "pandas>=3.0.2",
     "pytest>=9.0.3",
     "pytest-cov>=7.0.0"

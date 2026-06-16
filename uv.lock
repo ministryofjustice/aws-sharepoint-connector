@@ -103,7 +103,7 @@ dev = [
     { name = "ruff", specifier = ">=0.15.12" },
 ]
 test = [
-    { name = "moto", specifier = ">=5.1.22" },
+    { name = "moto", specifier = ">=5.2.0" },
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
