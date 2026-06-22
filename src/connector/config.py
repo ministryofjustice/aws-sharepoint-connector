@@ -2,11 +2,11 @@
 
 from uuid import UUID
 
-from pydantic import SecretStr, field_validator
+from pydantic import BaseModel, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class SharePointLibrary(BaseSettings):
+class SharePointLibrary(BaseModel):
     """Configuration for a SharePoint document library.
 
     Attributes:
@@ -56,7 +56,7 @@ class SharePointLibrary(BaseSettings):
         return v
 
 
-class S3Bucket(BaseSettings):
+class S3Bucket(BaseModel):
     """Configuration for an S3 bucket.
 
     Attributes:
