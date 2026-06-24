@@ -1,5 +1,6 @@
 """Unit tests for the s3 module."""
 
+from typing import Literal
 from unittest.mock import patch
 
 import boto3
@@ -20,11 +21,19 @@ def fixture_connector(s3: boto3.client) -> S3Connector:
     return S3Connector(client=s3, bucket=S3_BUCKET)
 
 
-def test_update_with_key(connector: S3Connector) -> None:
-    """update_with_key sets the S3 key on the connector instance."""
-    assert connector.key == ""  # default value
-    connector.update_with_key(S3_KEY)
-    assert connector.key == S3_KEY
+def test_set_source_key(connector: S3Connector) -> None:
+    """set_source_key sets the S3 key on the connector instance."""
+    assert connector.source_key == ""  # default value
+    connector.set_source_key(S3_KEY)
+    assert connector.source_key == S3_KEY
+
+
+def test_set_archive_key(connector: S3Connector) -> None:
+    """set_archive_key sets the S3 archive key on the connector instance."""
+    assert connector.archive_key == ""  # default value
+    archive_key = "archive/path/to/file1.csv"
+    connector.set_archive_key(archive_key)
+    assert connector.archive_key == archive_key
 
 
 @pytest.mark.parametrize(
@@ -111,7 +120,7 @@ def test_download_from_s3_returns_file_content(
     expected = b"Column1,Column2\nValue1,10\nValue2,20\n"
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=expected)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     assert connector.download_from_s3() == expected
 
 
@@ -127,7 +136,7 @@ def test_download_from_s3_error(
 ) -> None:
     """download_from_s3 raises ProcessingError with context when S3 client raises."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     with (
         patch.object(s3, "get_object", side_effect=exception),
@@ -143,7 +152,7 @@ def test_upload_to_s3_writes_file_content(
     data = b"name,score\nalice,100\nbob,95\n"
     utils.create_bucket(S3_BUCKET, s3)
 
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     connector.upload_to_s3(data)
 
     uploaded = s3.get_object(Bucket=S3_BUCKET, Key=S3_KEY)["Body"].read()
@@ -163,7 +172,7 @@ def test_upload_to_s3_error(
     """upload_to_s3 raises ProcessingError if S3 client raises an error."""
     utils.create_bucket(S3_BUCKET, s3)
 
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     with (
         patch.object(s3, "put_object", side_effect=exception),
@@ -172,16 +181,26 @@ def test_upload_to_s3_error(
         connector.upload_to_s3(b"data")
 
 
+@pytest.mark.parametrize(("verify_type"), [("source"), ("archive")])
 def test_verify_uploaded_object_success(
-    connector: S3Connector, s3: boto3.client
+    verify_type: Literal["source", "archive"],
+    connector: S3Connector,
+    s3: boto3.client,
 ) -> None:
     """verify_uploaded_object completes successfully when object size matches."""
     data = b"test data"
     utils.create_bucket(S3_BUCKET, s3)
-    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
 
-    connector.update_with_key(S3_KEY)
-    connector.verify_uploaded_object(expected_size=len(data))
+    key = S3_KEY if verify_type == "source" else "archive/path/to/file1.csv"
+
+    s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data)
+
+    if verify_type == "source":
+        connector.set_source_key(key)
+    else:
+        connector.set_archive_key(key)
+
+    connector.verify_uploaded_object(expected_size=len(data), verify_type=verify_type)
 
 
 def test_verify_uploaded_object_size_mismatch(
@@ -192,12 +211,14 @@ def test_verify_uploaded_object_size_mismatch(
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
 
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     with pytest.raises(
         FileSizeMismatchError, match="Verification failed for uploaded S3 object"
     ):
-        connector.verify_uploaded_object(expected_size=len(data) + 1)
+        connector.verify_uploaded_object(
+            expected_size=len(data) + 1, verify_type="source"
+        )
 
 
 def test_verify_uploaded_object_not_found(
@@ -206,10 +227,22 @@ def test_verify_uploaded_object_not_found(
     """verify_uploaded_object raises ProcessingError if the object does not exist."""
     utils.create_bucket(S3_BUCKET, s3)
 
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     with pytest.raises(ProcessingError, match="Failed to verify uploaded S3 object"):
-        connector.verify_uploaded_object(expected_size=10)
+        connector.verify_uploaded_object(expected_size=10, verify_type="source")
+
+
+def test_verify_uploaded_object_archive_key_not_set(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """verify_uploaded_object raises ProcessingError if archive_key is not set."""
+    utils.create_bucket(S3_BUCKET, s3)
+
+    with pytest.raises(
+        ProcessingError, match="archive_key must be set for archive verification"
+    ):
+        connector.verify_uploaded_object(expected_size=10, verify_type="archive")
 
 
 def test_check_bucket_exists_success(connector: S3Connector, s3: boto3.client) -> None:
@@ -280,7 +313,7 @@ def test_check_object_exists_success(connector: S3Connector, s3: boto3.client) -
     """check_object_exists does not raise when the object is accessible."""
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=b"data")
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     connector.check_object_exists()  # should not raise
 
 
@@ -289,7 +322,7 @@ def test_check_object_exists_not_found(
 ) -> None:
     """check_object_exists raises ProcessingError when the object does not exist."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key("missing/key.csv")
+    connector.set_source_key("missing/key.csv")
     with pytest.raises(ProcessingError, match="does not exist"):
         connector.check_object_exists()
 
@@ -299,7 +332,7 @@ def test_check_object_exists_access_denied(
 ) -> None:
     """check_object_exists raises ProcessingError with an IAM hint on a 403 response."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     with (
         patch.object(
             s3,
@@ -318,7 +351,7 @@ def test_check_object_exists_generic_client_error(
 ) -> None:
     """check_object_exists raises ProcessingError with message for unknown codes."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     with (
         patch.object(
             s3,
@@ -338,7 +371,7 @@ def test_check_object_exists_botocore_error(
 ) -> None:
     """check_object_exists raises ProcessingError when a BotoCoreError occurs."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
     with (
         patch.object(s3, "head_object", side_effect=BotoCoreError()),
         pytest.raises(ProcessingError, match="Failed to access S3 object"),
@@ -350,7 +383,7 @@ def test_delete_object_success(connector: S3Connector, s3: boto3.client) -> None
     """delete_object removes the current S3 key without raising."""
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=b"data")
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     connector.delete_object()
 
@@ -370,7 +403,7 @@ def test_delete_object_error(
 ) -> None:
     """delete_object raises ProcessingError when the S3 client delete call fails."""
     utils.create_bucket(S3_BUCKET, s3)
-    connector.update_with_key(S3_KEY)
+    connector.set_source_key(S3_KEY)
 
     with (
         patch.object(s3, "delete_object", side_effect=exception),

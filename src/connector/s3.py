@@ -1,6 +1,6 @@
 """S3 connector for handling interactions with Amazon S3."""
 
-from typing import Any
+from typing import Any, Literal
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,11 +18,16 @@ class S3Connector(BaseModel):
 
     client: Any  # boto3 client; typed as Any because boto3.client is a factory function
     bucket: str
-    key: str = Field(default="", init=False)  # set per-file via update_with_key()
+    source_key: str = Field(default="", init=False)
+    archive_key: str = Field(default="", init=False)
 
-    def update_with_key(self, key: str) -> None:
+    def set_source_key(self, source_key: str) -> None:
         """Set the S3 object key for the current file operation."""
-        self.key = key
+        self.source_key = source_key
+
+    def set_archive_key(self, archive_key: str) -> None:
+        """Set the S3 object key for the archive file operation."""
+        self.archive_key = archive_key
 
     def list_objects(self, prefix: str = "") -> list[str]:
         """List all object keys in the S3 bucket, optionally filtered by prefix.
@@ -69,12 +74,12 @@ class S3Connector(BaseModel):
             ProcessingError: If the download fails.
 
         """
-        log.info("Downloading object from S3: s3://%s/%s", self.bucket, self.key)
+        log.info("Downloading object from S3: s3://%s/%s", self.bucket, self.source_key)
         try:
-            obj = self.client.get_object(Bucket=self.bucket, Key=self.key)
+            obj = self.client.get_object(Bucket=self.bucket, Key=self.source_key)
             return obj["Body"].read()  # type: ignore[no-any-return]
         except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to download s3://{self.bucket}/{self.key}: {exc}"
+            err = f"Failed to download s3://{self.bucket}/{self.source_key}: {exc}"
             raise ProcessingError(err) from exc
 
     def upload_to_s3(self, data: bytes) -> None:
@@ -94,31 +99,42 @@ class S3Connector(BaseModel):
             "Uploading %s bytes to S3 object s3://%s/%s",
             len(data),
             self.bucket,
-            self.key,
+            self.source_key,
         )
         try:
-            self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
+            self.client.put_object(Bucket=self.bucket, Key=self.source_key, Body=data)
         except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to upload object to s3://{self.bucket}/{self.key}: {exc}"
+            err = (
+                f"Failed to upload object to s3://{self.bucket}/"
+                f"{self.source_key}: {exc}"
+            )
             raise ProcessingError(err) from exc
 
-    def verify_uploaded_object(self, expected_size: int) -> None:
+    def verify_uploaded_object(
+        self, expected_size: int, verify_type: Literal["source", "archive"]
+    ) -> None:
         """Verify object exists in S3 and matches expected byte size.
 
         Args:
             expected_size (int): The expected size of the uploaded object in bytes.
+            verify_type (Literal["source", "archive"]): Type of object being verified.
 
         Raises:
             FileSizeMismatchError: If the object size does not match the expected size.
             ProcessingError: If the object cannot be retrieved.
 
         """
+        if verify_type == "archive" and not self.archive_key:
+            err = "archive_key must be set for archive verification."
+            raise ProcessingError(err)
+        verify_key = self.source_key if verify_type == "source" else self.archive_key
+
         try:
-            metadata = self.client.head_object(Bucket=self.bucket, Key=self.key)
+            metadata = self.client.head_object(Bucket=self.bucket, Key=verify_key)
         except (BotoCoreError, ClientError) as exc:
             err = (
                 "Failed to verify uploaded S3 object "
-                f"s3://{self.bucket}/{self.key}: {exc}"
+                f"s3://{self.bucket}/{verify_key}: {exc}"
             )
             raise ProcessingError(err) from exc
 
@@ -126,14 +142,14 @@ class S3Connector(BaseModel):
         if actual_size != expected_size:
             err = (
                 "Verification failed for uploaded S3 object "
-                f"s3://{self.bucket}/{self.key}: expected {expected_size} bytes, "
+                f"s3://{self.bucket}/{verify_key}: expected {expected_size} bytes, "
                 f"got {actual_size} bytes"
             )
             raise FileSizeMismatchError(err)
         log.info(
             "Verified S3 upload for s3://%s/%s (%s bytes).",
             self.bucket,
-            self.key,
+            verify_key,
             expected_size,
         )
 
@@ -172,24 +188,30 @@ class S3Connector(BaseModel):
         log.info(
             "Checking access to S3 object s3://%s/%s.",
             self.bucket,
-            self.key,
+            self.source_key,
         )
         try:
-            self.client.head_object(Bucket=self.bucket, Key=self.key)
+            self.client.head_object(Bucket=self.bucket, Key=self.source_key)
         except ClientError as exc:
             code = exc.response["Error"]["Code"]
             if code in ("404", "NoSuchKey"):
-                err = f"S3 object does not exist: s3://{self.bucket}/{self.key}"
+                err = f"S3 object does not exist: s3://{self.bucket}/{self.source_key}"
             elif code == "403":
                 err = (
-                    f"Access denied to S3 object s3://{self.bucket}/{self.key}: "
+                    f"Access denied to S3 object s3://{self.bucket}/{self.source_key}: "
                     "check IAM permissions"
                 )
             else:
-                err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
+                err = (
+                    f"Failed to access S3 object s3://{self.bucket}/"
+                    f"{self.source_key}: {exc}"
+                )
             raise ProcessingError(err) from exc
         except BotoCoreError as exc:
-            err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
+            err = (
+                f"Failed to access S3 object s3://{self.bucket}/"
+                f"{self.source_key}: {exc}"
+            )
             raise ProcessingError(err) from exc
 
     def delete_object(self) -> None:
@@ -199,9 +221,9 @@ class S3Connector(BaseModel):
             ProcessingError: If the delete operation fails.
 
         """
-        log.info("Deleting S3 object s3://%s/%s.", self.bucket, self.key)
+        log.info("Deleting S3 object s3://%s/%s.", self.bucket, self.source_key)
         try:
-            self.client.delete_object(Bucket=self.bucket, Key=self.key)
+            self.client.delete_object(Bucket=self.bucket, Key=self.source_key)
         except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to delete s3://{self.bucket}/{self.key}: {exc}"
+            err = f"Failed to delete s3://{self.bucket}/{self.source_key}: {exc}"
             raise ProcessingError(err) from exc
