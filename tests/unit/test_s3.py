@@ -183,7 +183,7 @@ def test_upload_to_s3_error(
 
 @pytest.mark.parametrize(("verify_type"), [("source"), ("archive")])
 def test_verify_uploaded_object_success(
-    verify_type: Literal["source", "archive"],
+    verify_type: Literal["destination", "archive"],
     connector: S3Connector,
     s3: boto3.client,
 ) -> None:
@@ -191,11 +191,11 @@ def test_verify_uploaded_object_success(
     data = b"test data"
     utils.create_bucket(S3_BUCKET, s3)
 
-    key = S3_KEY if verify_type == "source" else "archive/path/to/file1.csv"
+    key = S3_KEY if verify_type == "destination" else "archive/path/to/file1.csv"
 
     s3.put_object(Bucket=S3_BUCKET, Key=key, Body=data)
 
-    if verify_type == "source":
+    if verify_type == "destination":
         connector.set_key(key)
     else:
         connector.set_archive_key(key)
@@ -217,7 +217,7 @@ def test_verify_uploaded_object_size_mismatch(
         FileSizeMismatchError, match="Verification failed for uploaded S3 object"
     ):
         connector.verify_uploaded_object(
-            expected_size=len(data) + 1, verify_type="source"
+            expected_size=len(data) + 1, verify_type="destination"
         )
 
 
@@ -230,7 +230,7 @@ def test_verify_uploaded_object_not_found(
     connector.set_key(S3_KEY)
 
     with pytest.raises(ProcessingError, match="Failed to verify uploaded S3 object"):
-        connector.verify_uploaded_object(expected_size=10, verify_type="source")
+        connector.verify_uploaded_object(expected_size=10, verify_type="destination")
 
 
 def test_verify_uploaded_object_archive_key_not_set(

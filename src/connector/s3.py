@@ -111,13 +111,13 @@ class S3Connector(BaseModel):
             raise ProcessingError(err) from exc
 
     def verify_uploaded_object(
-        self, expected_size: int, verify_type: Literal["source", "archive"]
+        self, expected_size: int, verify_type: Literal["destination", "archive"]
     ) -> None:
         """Verify object exists in S3 and matches expected byte size.
 
         Args:
             expected_size (int): The expected size of the uploaded object in bytes.
-            verify_type (Literal["source", "archive"]): Type of object being verified.
+            verify_type (Literal["destination", "archive"]): object being verified.
 
         Raises:
             FileSizeMismatchError: If the object size does not match the expected size.
@@ -127,7 +127,9 @@ class S3Connector(BaseModel):
         if verify_type == "archive" and not self.archive_key:
             err = "archive_key must be set for archive verification."
             raise ProcessingError(err)
-        verify_key = self.source_key if verify_type == "source" else self.archive_key
+        verify_key = (
+            self.source_key if verify_type == "destination" else self.archive_key
+        )
 
         try:
             metadata = self.client.head_object(Bucket=self.bucket, Key=verify_key)
