@@ -21,7 +21,7 @@ class S3Connector(BaseModel):
     source_key: str = Field(default="", init=False)
     archive_key: str = Field(default="", init=False)
 
-    def set_source_key(self, source_key: str) -> None:
+    def set_key(self, source_key: str) -> None:
         """Set the S3 object key for the current file operation."""
         self.source_key = source_key
 
@@ -226,4 +226,30 @@ class S3Connector(BaseModel):
             self.client.delete_object(Bucket=self.bucket, Key=self.source_key)
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to delete s3://{self.bucket}/{self.source_key}: {exc}"
+            raise ProcessingError(err) from exc
+
+    def archive_object(self, content_size: int) -> None:
+        """Archive the S3 object by copying it to a new key and deleting the original.
+
+        Args:
+            content_size (int): The size of the content in bytes.
+
+        Raises:
+            ProcessingError: If the copy or delete operation fails.
+
+        """
+        try:
+            copy_source = {"Bucket": self.bucket, "Key": self.source_key}
+            self.client.copy_object(
+                Bucket=self.bucket, CopySource=copy_source, Key=self.archive_key
+            )
+            self.verify_uploaded_object(
+                expected_size=content_size, verify_type="archive"
+            )
+            self.client.delete_object(Bucket=self.bucket, Key=self.source_key)
+        except (BotoCoreError, ClientError) as exc:
+            err = (
+                f"Failed to archive s3://{self.bucket}/{self.source_key} "
+                f"to s3://{self.bucket}/{self.archive_key}: {exc}"
+            )
             raise ProcessingError(err) from exc

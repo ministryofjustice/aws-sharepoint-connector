@@ -5,6 +5,10 @@ class InvalidModeError(Exception):
     """Raised when an invalid mode is provided to the connector."""
 
 
+class NoArchiveFolderGivenError(Exception):
+    """Raised when source_handling is 'archive' but no archive_folder is provided."""
+
+
 class ProcessingError(Exception):
     """Raised when an error occurs during processing of a file."""
 
