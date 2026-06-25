@@ -47,6 +47,7 @@ class SharePointConnector(BaseModel):
     upload_url: str = Field(default="", init=False)
     download_url: str = Field(default="", init=False)
     file_path: str = Field(default="", init=False)
+    archive_url: str = Field(default="", init=False)
 
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
@@ -208,6 +209,20 @@ class SharePointConnector(BaseModel):
         """
         self.download_url = f"{self.base_url}/content"
 
+    def set_archive_url(self, archive_folder: str) -> None:
+        """Generate the target SharePoint url for archiving files.
+
+        Args:
+            archive_folder (str): The archive destination folder in SharePoint.
+
+        Returns:
+            None
+
+        """
+        archive_path = str(Path(archive_folder) / Path(self.file_path).name)
+        encoded_path = quote(archive_path, safe="/")
+        self.archive_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:/content"
+
     def list_files(self) -> list[str]:
         """List all files in the SharePoint library, including subfolders.
 
@@ -342,11 +357,14 @@ class SharePointConnector(BaseModel):
         file_resp.raise_for_status()
         return file_resp.content
 
-    def verify_uploaded_file(self, expected_size: int) -> None:
+    def verify_uploaded_file(
+        self, expected_size: int, verify_type: Literal["destination", "archive"]
+    ) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
 
         Args:
             expected_size (int): Expected size in bytes for the uploaded file.
+            verify_type (Literal["destination", "archive"]): Object being verified.
 
         Returns:
             None
@@ -358,7 +376,13 @@ class SharePointConnector(BaseModel):
 
         """
         expected_name = Path(self.file_path).name
-        verify_url = f"{self.base_url}?$select=name,size,file"
+
+        if verify_type == "destination":
+            verify_url = f"{self.base_url}?$select=name,size,file"
+        else:
+            archive_item_url = self.archive_url.removesuffix("/content")
+            verify_url = f"{archive_item_url}?$select=name,size,file"
+
         try:
             resp = request_with_retry(
                 "GET", verify_url, headers=self.headers, timeout=30

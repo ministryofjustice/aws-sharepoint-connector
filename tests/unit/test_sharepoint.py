@@ -231,6 +231,19 @@ def test_set_download_url() -> None:
     )
 
 
+def test_set_archive_url() -> None:
+    """Test that set_archive_url builds the correct archive URL."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    assert connector.archive_url == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+        "/root:/archive/reports/2026/file1.csv:/content"
+    )
+
+
 def test_list_files_success() -> None:
     """list_files returns file names from the library root, excluding folders."""
     connector = make_connector()
@@ -451,21 +464,30 @@ def test_fetch_file_request_error() -> None:
 
 
 @pytest.mark.parametrize(
-    ("file_path", "expected_verify_url"),
+    ("verify_type", "file_path", "expected_verify_url"),
     [
         (
+            "destination",
             SP_FILE_PATH,
             "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
             "/root:/reports/2026/file1.csv:?$select=name,size,file",
         ),
         (
+            "destination",
             SP_FILE_PATH_NO_DIR,
             "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
             "/root:/file6.csv:?$select=name,size,file",
         ),
+        (
+            "archive",
+            SP_FILE_PATH,
+            "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+            "/root:/archive/reports/2026/file1.csv:?$select=name,size,file",
+        ),
     ],
 )
 def test_verify_uploaded_file_success(
+    verify_type: Literal["destination", "archive"],
     file_path: str,
     expected_verify_url: str,
     caplog: pytest.LogCaptureFixture,
@@ -476,6 +498,7 @@ def test_verify_uploaded_file_success(
 
     connector = make_connector()
     connector.update_with_file_path(file_path)
+    connector.set_archive_url("archive/reports/2026/")  # for archive verification
 
     with (
         patch(
@@ -486,7 +509,7 @@ def test_verify_uploaded_file_success(
         ) as mock_verify,
         caplog.at_level(logging.INFO, logger="s3-sharepoint"),
     ):
-        connector.verify_uploaded_file(expected_size=expected_size)
+        connector.verify_uploaded_file(expected_size, verify_type=verify_type)
 
     assert (
         f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
@@ -513,7 +536,7 @@ def test_verify_uploaded_not_found() -> None:
         ),
         pytest.raises(ObjectNotFoundError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_verify_uploaded_size_mismatch() -> None:
@@ -532,7 +555,7 @@ def test_verify_uploaded_size_mismatch() -> None:
         ),
         pytest.raises(FileSizeMismatchError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_verify_uploaded_file_request_error() -> None:
@@ -548,7 +571,7 @@ def test_verify_uploaded_file_request_error() -> None:
         ),
         pytest.raises(ProcessingError, match="Failed to verify uploaded file"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_upload_stream_in_chunks_success() -> None:
