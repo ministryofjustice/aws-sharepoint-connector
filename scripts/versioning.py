@@ -5,12 +5,12 @@ import os
 import urllib.request
 
 from packaging.version import Version
+from typer import BadParameter
 from typer import Typer
+from typer import echo
 
 app = Typer()
 
-candidate_version = os.environ["CANDIDATE_VERSION"]
-version = os.environ["VERSION"]
 prod_url = "https://pypi.org/pypi/aws-sharepoint-connector/json"
 test_url = "https://test.pypi.org/pypi/aws-sharepoint-connector/json"
 
@@ -24,10 +24,15 @@ def check_url(url: str) -> None:
 
 @app.command("validate")
 def validate_newer_version(
-    version: str = candidate_version, url: str = prod_url
+    version: str | None = None, url: str = prod_url
 ) -> None:
     """Validate version is newer than current PyPI."""
-    candidate = Version(version)
+    resolved_version = version or os.environ.get("CANDIDATE_VERSION")
+    if not resolved_version:
+        msg = "CANDIDATE_VERSION is required"
+        raise BadParameter(msg)
+
+    candidate = Version(resolved_version)
     check_url(url)
     with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
         data = json.load(response)
@@ -42,17 +47,22 @@ it is not newer than current PyPI latest {latest}."
 
 
 @app.command("check")
-def check_test_version_exists(version: str = version, url: str = test_url) -> bool:
+def check_test_version_exists(version: str | None = None, url: str = test_url) -> None:
     """Check if test package version already exists."""
+    resolved_version = version or os.environ.get("VERSION")
+    if not resolved_version:
+        msg = "VERSION is required"
+        raise BadParameter(msg)
+
     try:
         check_url(url)
         with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
             data = json.load(response)
     except Exception:  # noqa: BLE001 just returning bool
-        return False
+        echo("false")
     else:
-        exists = version in data.get("releases", {})
-        return bool(exists)
+        exists = resolved_version in data.get("releases", {})
+        echo("true" if exists else "false")
 
 
 if __name__ == "__main__":
