@@ -23,9 +23,9 @@ def fixture_connector(s3: boto3.client) -> S3Connector:
 
 def test_set_key(connector: S3Connector) -> None:
     """set_key sets the S3 key on the connector instance."""
-    assert connector.source_key == ""  # default value
+    assert connector.key == ""  # default value
     connector.set_key(S3_KEY)
-    assert connector.source_key == S3_KEY
+    assert connector.key == S3_KEY
 
 
 def test_set_archive_key(connector: S3Connector) -> None:

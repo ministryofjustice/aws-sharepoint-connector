@@ -18,12 +18,12 @@ class S3Connector(BaseModel):
 
     client: Any  # boto3 client; typed as Any because boto3.client is a factory function
     bucket: str
-    source_key: str = Field(default="", init=False)
+    key: str = Field(default="", init=False)
     archive_key: str = Field(default="", init=False)
 
-    def set_key(self, source_key: str) -> None:
+    def set_key(self, key: str) -> None:
         """Set the S3 object key for the current file operation."""
-        self.source_key = source_key
+        self.key = key
 
     def set_archive_key(self, archive_key: str) -> None:
         """Set the S3 object key for the archive file operation."""
@@ -74,12 +74,12 @@ class S3Connector(BaseModel):
             ProcessingError: If the download fails.
 
         """
-        log.info("Downloading object from S3: s3://%s/%s", self.bucket, self.source_key)
+        log.info("Downloading object from S3: s3://%s/%s", self.bucket, self.key)
         try:
-            obj = self.client.get_object(Bucket=self.bucket, Key=self.source_key)
+            obj = self.client.get_object(Bucket=self.bucket, Key=self.key)
             return obj["Body"].read()  # type: ignore[no-any-return]
         except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to download s3://{self.bucket}/{self.source_key}: {exc}"
+            err = f"Failed to download s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
 
     def upload_to_s3(self, data: bytes) -> None:
@@ -99,15 +99,12 @@ class S3Connector(BaseModel):
             "Uploading %s bytes to S3 object s3://%s/%s",
             len(data),
             self.bucket,
-            self.source_key,
+            self.key,
         )
         try:
-            self.client.put_object(Bucket=self.bucket, Key=self.source_key, Body=data)
+            self.client.put_object(Bucket=self.bucket, Key=self.key, Body=data)
         except (BotoCoreError, ClientError) as exc:
-            err = (
-                f"Failed to upload object to s3://{self.bucket}/"
-                f"{self.source_key}: {exc}"
-            )
+            err = f"Failed to upload object to s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
 
     def verify_uploaded_object(
@@ -127,9 +124,7 @@ class S3Connector(BaseModel):
         if verify_type == "archive" and not self.archive_key:
             err = "archive_key must be set for archive verification."
             raise ProcessingError(err)
-        verify_key = (
-            self.source_key if verify_type == "destination" else self.archive_key
-        )
+        verify_key = self.key if verify_type == "destination" else self.archive_key
 
         try:
             metadata = self.client.head_object(Bucket=self.bucket, Key=verify_key)
@@ -190,30 +185,24 @@ class S3Connector(BaseModel):
         log.info(
             "Checking access to S3 object s3://%s/%s.",
             self.bucket,
-            self.source_key,
+            self.key,
         )
         try:
-            self.client.head_object(Bucket=self.bucket, Key=self.source_key)
+            self.client.head_object(Bucket=self.bucket, Key=self.key)
         except ClientError as exc:
             code = exc.response["Error"]["Code"]
             if code in ("404", "NoSuchKey"):
-                err = f"S3 object does not exist: s3://{self.bucket}/{self.source_key}"
+                err = f"S3 object does not exist: s3://{self.bucket}/{self.key}"
             elif code == "403":
                 err = (
-                    f"Access denied to S3 object s3://{self.bucket}/{self.source_key}: "
+                    f"Access denied to S3 object s3://{self.bucket}/{self.key}: "
                     "check IAM permissions"
                 )
             else:
-                err = (
-                    f"Failed to access S3 object s3://{self.bucket}/"
-                    f"{self.source_key}: {exc}"
-                )
+                err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
         except BotoCoreError as exc:
-            err = (
-                f"Failed to access S3 object s3://{self.bucket}/"
-                f"{self.source_key}: {exc}"
-            )
+            err = f"Failed to access S3 object s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
 
     def delete_object(self) -> None:
@@ -223,11 +212,11 @@ class S3Connector(BaseModel):
             ProcessingError: If the delete operation fails.
 
         """
-        log.info("Deleting S3 object s3://%s/%s.", self.bucket, self.source_key)
+        log.info("Deleting S3 object s3://%s/%s.", self.bucket, self.key)
         try:
-            self.client.delete_object(Bucket=self.bucket, Key=self.source_key)
+            self.client.delete_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to delete s3://{self.bucket}/{self.source_key}: {exc}"
+            err = f"Failed to delete s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
 
     def archive_object(self, content_size: int) -> None:
@@ -241,17 +230,17 @@ class S3Connector(BaseModel):
 
         """
         try:
-            copy_source = {"Bucket": self.bucket, "Key": self.source_key}
+            copy_source = {"Bucket": self.bucket, "Key": self.key}
             self.client.copy_object(
                 Bucket=self.bucket, CopySource=copy_source, Key=self.archive_key
             )
             self.verify_uploaded_object(
                 expected_size=content_size, verify_type="archive"
             )
-            self.client.delete_object(Bucket=self.bucket, Key=self.source_key)
+            self.client.delete_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
             err = (
-                f"Failed to archive s3://{self.bucket}/{self.source_key} "
+                f"Failed to archive s3://{self.bucket}/{self.key} "
                 f"to s3://{self.bucket}/{self.archive_key}: {exc}"
             )
             raise ProcessingError(err) from exc
