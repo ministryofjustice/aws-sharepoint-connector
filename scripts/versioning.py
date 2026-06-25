@@ -1,0 +1,57 @@
+"""Handle version logic."""
+import json
+import os
+import urllib.request
+
+from packaging.version import Version
+from typer import Typer
+
+app = Typer()
+
+candidate_version = os.environ["CANDIDATE_VERSION"]
+version = os.environ["VERSION"]
+prod_url = "https://pypi.org/pypi/aws-sharepoint-connector/json"
+test_url = "https://test.pypi.org/pypi/aws-sharepoint-connector/json"
+
+def check_url(url: str) -> None:
+    """Check url is url and not file."""
+    if not url.startswith(("http:", "https:")):
+        msg = "URL must start with 'http:' or 'https:'"
+        raise ValueError(msg)
+
+@app.command("validate")
+def validate_newer_version(
+    version: str = candidate_version,
+    url: str = prod_url
+) -> None:
+    """Validate version is newer than current PyPI."""
+    candidate = Version(version)
+    check_url(url)
+    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
+        data = json.load(response)
+
+    releases = [Version(v) for v in data.get("releases", {})]
+    if releases:
+        latest = max(releases)
+        if candidate <= latest:
+            msg = f"Refusing to publish {candidate}:\
+it is not newer than current PyPI latest {latest}."
+            raise SystemExit(
+                msg
+            )
+
+@app.command("check")
+def check_test_version_exists(version: str = version, url: str = test_url) -> bool:
+    """Check if test package version already exists."""
+    try:
+        check_url(url)
+        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
+            data = json.load(response)
+    except Exception:  # noqa: BLE001 just returning bool
+        return False
+    else:
+        exists = version in data.get("releases", {})
+        return bool(exists)
+
+if __name__ == "__main__":
+    app()
