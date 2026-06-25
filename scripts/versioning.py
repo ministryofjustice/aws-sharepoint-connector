@@ -1,4 +1,5 @@
 """Handle version logic."""
+
 import json
 import os
 import urllib.request
@@ -13,16 +14,17 @@ version = os.environ["VERSION"]
 prod_url = "https://pypi.org/pypi/aws-sharepoint-connector/json"
 test_url = "https://test.pypi.org/pypi/aws-sharepoint-connector/json"
 
+
 def check_url(url: str) -> None:
     """Check url is url and not file."""
     if not url.startswith(("http:", "https:")):
         msg = "URL must start with 'http:' or 'https:'"
         raise ValueError(msg)
 
+
 @app.command("validate")
 def validate_newer_version(
-    version: str = candidate_version,
-    url: str = prod_url
+    version: str = candidate_version, url: str = prod_url
 ) -> None:
     """Validate version is newer than current PyPI."""
     candidate = Version(version)
@@ -36,9 +38,8 @@ def validate_newer_version(
         if candidate <= latest:
             msg = f"Refusing to publish {candidate}:\
 it is not newer than current PyPI latest {latest}."
-            raise SystemExit(
-                msg
-            )
+            raise SystemExit(msg)
+
 
 @app.command("check")
 def check_test_version_exists(version: str = version, url: str = test_url) -> bool:
@@ -52,6 +53,7 @@ def check_test_version_exists(version: str = version, url: str = test_url) -> bo
     else:
         exists = version in data.get("releases", {})
         return bool(exists)
+
 
 if __name__ == "__main__":
     app()

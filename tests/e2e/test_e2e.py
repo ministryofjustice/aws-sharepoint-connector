@@ -7,7 +7,7 @@ import boto3
 import pytest
 from requests import Response
 
-from connector.main import create_engine
+from aws_sharepoint_connector.main import create_engine
 from tests import test_utils as utils
 
 
@@ -63,10 +63,12 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
 
     with (
         patch(
-            "connector.auth.ClientSecretCredential.get_token",
+            "aws_sharepoint_connector.auth.ClientSecretCredential.get_token",
             side_effect=utils.mock_get_token,
         ),
-        patch("connector.sharepoint.requests.get", side_effect=get_mocks),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
+        ),
     ):
         eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
         for plan in plans_dicts:
@@ -135,17 +137,21 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
 
     with (
         patch(
-            "connector.auth.ClientSecretCredential.get_token",
+            "aws_sharepoint_connector.auth.ClientSecretCredential.get_token",
             side_effect=utils.mock_get_token,
         ),
-        patch("connector.sharepoint.requests.get", side_effect=get_mocks),
-        patch("connector.sharepoint.requests.post", side_effect=post_mocks),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.post", side_effect=post_mocks
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             side_effect=session_get_mocks,
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             side_effect=session_put_mocks,
         ) as mock_session_put,
     ):
