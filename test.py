@@ -18,7 +18,9 @@ def run_plans(
     """Run a list of file transfer plans using the given engine."""
     for plan in plans:
         engine.run(
-            source=plan["source"], destination=plan["destination"], delete=delete
+            source=plan["source"],
+            destination=plan["destination"],
+            source_handling="delete" if delete
         )
 
 

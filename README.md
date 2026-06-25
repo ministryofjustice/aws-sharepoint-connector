@@ -12,7 +12,7 @@
 
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
-Operates in two modes: (`write_to_s3`) to move from AWS S3 and SharePoint and (`write_to_sharepoint`) to do the reverse. Simply instantiate an engine via `create_engine` and iterate over the source files you want to move with the `run` method.
+Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint` (S3 -> SharePoint). Instantiate an engine via `create_engine` and call `run` for each file you want to transfer.
 
 ## Table of contents
 
@@ -35,12 +35,12 @@ Operates in two modes: (`write_to_s3`) to move from AWS S3 and SharePoint and (`
 
 1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
-3. For each file, call `engine.run(source, destination)`:
-    - Calls `engine.validate_plans` to validate the plan before any transfers begin:
+3. For each file, call `engine.run(source, destination, archive_folder="", source_handling="none")`:
+    - Calls `engine.validate_plan` to validate the transfer before any file movement begins.
     - Download from the source system (SharePoint or S3).
     - Upload to the destination system (S3 or SharePoint).
     - Verify transfer was successful by comparing byte size.
-    - Optionally delete the source file
+    - Optionally delete or archive the source file.
 4. Handle errors per file in your calling code.
 
 ### Transfer Modes
@@ -89,13 +89,14 @@ Passed directly to `create_engine()` from your calling code
 
 Passed to the engine's `run` method to identify a specific file to move
 
-**`run(source, destination, delete)`**
+**`run(source, destination, archive_folder="", source_handling="none")`**
 
 | Key | Type | Description |
 | --- | --- | --- |
 | `source` | string | Source file path (SharePoint path or S3 key) |
 | `destination` | string | Destination file path (S3 key or SharePoint path) |
-| `delete` | bool | Flag for whether to delete source file after successful transfer |
+| `archive_folder` | string | Folder to archive the source file into when `source_handling="archive"`. Must be a directory path in the same source system. |
+| `source_handling` | string | What to do with source after successful transfer: `"none"` (default), `"delete"`, or `"archive"`. |
 
 ### Example: SharePoint → S3 (single file)
 
@@ -132,7 +133,7 @@ engine = create_engine(
     sp_library="Documents",
     s3_bucket="my-bucket",
 )
-plans =
+plans = [
     {
         "source": "path/to/daily_report.csv",
         "destination": "reports/2026/daily_report.csv",
@@ -141,6 +142,29 @@ plans =
 for plan in plans:
     engine.run(plan["source"], plan["destination"])
 ```
+
+### Example: archive source after successful transfer
+
+```python
+engine = create_engine(
+    mode="write_to_sharepoint",
+    sp_site="analytics-site",
+    sp_library="Documents",
+    s3_bucket="my-bucket",
+)
+
+engine.run(
+    source="reports/2026/daily_report.csv",
+    destination="processed/daily_report.csv",
+    archive_folder="archive/reports/2026",
+    source_handling="archive",
+)
+```
+
+Archive behavior by mode:
+
+- `write_to_sharepoint`: archives the source S3 object by copying it to `archive_folder/<filename>` and deleting the original key.
+- `write_to_s3`: archives the source SharePoint file by uploading it to `archive_folder/<filename>` and deleting the original file.
 
 ## Prerequisites
 
@@ -230,7 +254,7 @@ plans = [
 ]
 
 for plan in plans:
-    engine.run(plan.source, plan.destination)
+    engine.run(plan["source"], plan["destination"])
 ```
 
 You can optionally use the `list_source_files` methods on the engines to obtain a list
@@ -271,11 +295,13 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 
 1. Create a new engine class in `src/connector/engine.py` implementing:
     - `download_file(self, source: str) -> bytes`
-    - `upload_file(self, content: bytes, destination: str) -> None`
-    - `validate_plans(self, plans: list[dict[str, str]]) -> None`
+    - `upload_file(self, content: bytes, destination: str, content_size: int) -> None`
+    - `archive_source_file(self, source: str, archive_folder: str, content_size: int) -> None`
+    - `delete_source_file(self, source: str) -> None`
+    - `validate_plan(self, source: str, destination: str) -> None`
 2. Register the engine in `MODE_MAP` in `src/connector/main.py`.
 3. Expand the `Literal` type for `mode` in `create_engine()` in `src/connector/main.py`.
-4. Add unit tests for success and failure paths, including `validate_plans`.
+4. Add unit tests for success and failure paths, including `validate_plan` and source handling (`none`/`delete`/`archive`).
 
 ### 2) Add additional configuration
 
@@ -289,12 +315,12 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 ### Common errors and solutions
 
 - **`Pre-flight validation failed with N error(s)`**: One or more sources or destinations could not be verified before transfers started. The error message lists every problem — fix all of them before retrying.
-- **`Library 'X' not found on site`**: Verify `sp_library` spelling and that the app has SharePoint access via Graph API permissions (`Sites.Read.All`, `Files.ReadWrite.All`)
+- **`Library 'X' not found on site`**: Verify `sp_library` spelling and that the app has SharePoint access to the target site/library
 - **`Source file not found in SharePoint`**: Verify the file exists at the exact path supplied as `source`; check case sensitivity
 - **`Destination folder not found in SharePoint`**: The parent directory of the destination path does not exist in SharePoint; create it before running the connector
 - **`S3 bucket does not exist`** or **`S3 object does not exist`**: Verify bucket name is correct, bucket exists in eu-west-2, and IAM principal has access
 - **`Access denied to S3 bucket/object`**: Check IAM policy grants `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, and `s3:HeadBucket` on the bucket
-- **`AADSTS65001` or Graph auth failures**: Verify app permissions (`Sites.Read.All`, `Files.ReadWrite.All`) are granted in Azure; may need admin consent
+- **`AADSTS65001` or Graph auth failures**: Verify app permissions and consent in Azure; may need admin consent
 - **`File transfer failed: Max retries exceeded`**: File chunk upload exceeded 5 consecutive failures; check network stability, S3/SharePoint availability, and file size
 
 ## Security considerations
@@ -302,7 +328,7 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 - **Never commit `.env` files or secrets**: Add `.env` to `.gitignore`
 - **Prefer managed identity**: Use workload identity or managed identity in AWS/Azure instead of storing static credentials
 - **Scope permissions tightly**:
-  - Azure: Limit app permissions to `Sites.Read.All` and `Files.ReadWrite.All` only
+    - Azure: Limit app permissions to only what the target site/library requires
   - AWS: Restrict IAM policy to specific bucket and prefix (e.g., `arn:aws:s3:::bucket/prefix/*`)
 - **Rotate secrets**: Change Azure client secrets every 90 days and update secret manager
 - **Store secrets securely**: Use AWS Secrets Manager, Azure Key Vault, or Kubernetes secrets (never hardcode in env vars)

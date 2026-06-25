@@ -126,7 +126,7 @@ class Engine(ABC):
 
         Raises:
             ProcessingError: If any step of the transfer fails, including validation,
-                download, upload, or deletion of the source file.
+                download, upload, source deletion, or source archiving.
             ObjectNotFoundError: If the source file does not exist in source storage.
 
         Source is the full S3 key (excluding the bucket name) or the full path to the
@@ -134,8 +134,10 @@ class Engine(ABC):
         to the SharePoint file (excluding the site and library) or the full S3 key
         (excluding the bucket name).
 
-        Setting source handling to 'delete' will remove the source file.
-        Setting to 'archive' will move the source file to an archive folder.
+        Setting source handling to 'delete' will remove the source file after a
+        successful upload and verification.
+        Setting to 'archive' will archive the source file after a successful upload
+        and verification.
 
         """
         if source_handling == "archive" and not archive_folder:
@@ -305,7 +307,7 @@ class UploadToSharePointEngine(Engine):
 
         Raises:
             NoArchiveFolderGivenError: If archive_folder is not provided when
-                source_handling is 'archive' is 'archive'.
+                source_handling is 'archive'.
             ProcessingError: If the S3 archiving fails.
 
         """
@@ -363,7 +365,7 @@ class UploadToS3Engine(Engine):
             None
 
         Returns:
-            list[str]: All object keys in the S3 source bucket.
+            list[str]: All file paths in the SharePoint source library.
 
         Raises:
             ProcessingError: If the listing request fails.

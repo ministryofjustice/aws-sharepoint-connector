@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added configurable post-transfer source handling via `Engine.run(..., source_handling=...)`:
+  - `none` (default): keep source in place
+  - `delete`: delete source after successful transfer
+  - `archive`: archive source after successful transfer (requires `archive_folder`)
+- Added `NoArchiveFolderGivenError` when `source_handling="archive"` is used without an `archive_folder`.
+- Added archive workflows in both transfer directions:
+  - S3 source: copy to archive key and delete original object
+  - SharePoint source: upload to archive path and delete original file
+
+### Changed
+
+- Updated `README.md` and API documentation to match the current runtime API and archive behavior.
+- Corrected method/class documentation to align with `validate_plan(...)` and current `run(...)` parameters.
+
 ## [1.2.3] - 2026-06-22
 
 ### Changed
@@ -132,3 +150,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.2.3]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.0...v1.2.1
+[Unreleased]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.3...HEAD

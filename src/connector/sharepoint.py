@@ -214,6 +214,7 @@ class SharePointConnector(BaseModel):
 
         Args:
             archive_folder (str): The archive destination folder in SharePoint.
+                The file name from ``self.file_path`` is appended automatically.
 
         Returns:
             None
@@ -562,9 +563,6 @@ class SharePointConnector(BaseModel):
     def delete_file(self) -> None:
         """Delete a file from SharePoint.
 
-        Args:
-            path (str): The path of the file to delete in SharePoint.
-
         Returns:
             None
 
@@ -588,7 +586,7 @@ class SharePointConnector(BaseModel):
         resp.raise_for_status()
 
     def archive_file(self, content_size: int) -> None:
-        """Archive a file in SharePoint by moving it to the specified archive folder.
+        """Archive a SharePoint file by writing it to ``archive_url`` and deleting source.
 
         Args:
             content_size (int): The size of the content in bytes.
