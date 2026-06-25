@@ -245,6 +245,73 @@ def test_verify_uploaded_object_archive_key_not_set(
         connector.verify_uploaded_object(expected_size=10, verify_type="archive")
 
 
+def test_archive_object_success(connector: S3Connector, s3: boto3.client) -> None:
+    """archive_object copies to archive key and deletes the original key."""
+    data = b"archived data"
+    archive_key = "archive/path/to/file1.csv"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
+
+    connector.set_key(S3_KEY)
+    connector.set_archive_key(archive_key)
+
+    connector.archive_object(content_size=len(data))
+
+    keys = sorted(connector.list_objects())
+    assert keys == [archive_key]
+
+
+def test_archive_object_copy_error(connector: S3Connector, s3: boto3.client) -> None:
+    """archive_object wraps copy failures in ProcessingError."""
+    archive_key = "archive/path/to/file1.csv"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=b"source")
+    connector.set_key(S3_KEY)
+    connector.set_archive_key(archive_key)
+
+    with (
+        patch.object(
+            s3,
+            "copy_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "500", "Message": "copy failed"}},
+                "CopyObject",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="Failed to archive s3://"),
+    ):
+        connector.archive_object(content_size=6)
+
+    assert S3_KEY in connector.list_objects()
+    assert archive_key not in connector.list_objects()
+
+
+def test_archive_object_delete_error(connector: S3Connector, s3: boto3.client) -> None:
+    """archive_object wraps delete failures in ProcessingError."""
+    archive_key = "archive/path/to/file1.csv"
+    data = b"source"
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key=S3_KEY, Body=data)
+    connector.set_key(S3_KEY)
+    connector.set_archive_key(archive_key)
+
+    with (
+        patch.object(
+            s3,
+            "delete_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "500", "Message": "delete failed"}},
+                "DeleteObject",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="Failed to archive s3://"),
+    ):
+        connector.archive_object(content_size=len(data))
+
+    assert S3_KEY in connector.list_objects()
+    assert archive_key in connector.list_objects()
+
+
 def test_check_bucket_exists_success(connector: S3Connector, s3: boto3.client) -> None:
     """check_bucket_exists does not raise when the bucket is accessible."""
     utils.create_bucket(S3_BUCKET, s3)
