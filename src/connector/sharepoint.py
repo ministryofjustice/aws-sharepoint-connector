@@ -586,3 +586,33 @@ class SharePointConnector(BaseModel):
             err = f"File not found in SharePoint for deletion: '{self.base_url}'"
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
+
+    def archive_file(self, content_size: int) -> None:
+        """Archive a file in SharePoint by moving it to the specified archive folder.
+
+        Args:
+            content_size (int): The size of the content in bytes.
+
+        Returns:
+            None
+
+        Raises:
+            ProcessingError: If the file cannot be archived due to an HTTP error.
+
+        """
+        source_content = self.fetch_file()
+
+        try:
+            resp = requests.put(
+                self.archive_url,
+                headers=self.headers,
+                data=source_content,
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            err = f"Failed to archive file in SharePoint: {exc}"
+            raise ProcessingError(err) from exc
+
+        resp.raise_for_status()
+        self.verify_uploaded_file(expected_size=content_size, verify_type="archive")
+        self.delete_file()
