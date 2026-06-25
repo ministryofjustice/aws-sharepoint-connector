@@ -38,8 +38,8 @@ class Engine(ABC):
         list_source_files: List files available in the source storage.
         download_file: Download a file from the source storage.
         upload_file: Upload a file to the destination storage.
-        delete_source_file: Delete a file from the source storage after successful
-            transfer.
+        delete_source_file: Delete file from S3 after successful transfer.
+        archive_source_file: Archive file in the S3 after successful transfer.
         validate_plan: Validate planned file movement is feasible before execution.
         run: Transfer a single file from source to destination storage.
 
@@ -119,7 +119,8 @@ class Engine(ABC):
             archive_folder (str): The SharePoint folder or S3 directory to move the
                 source file to if source_handling is 'archive'. This must be a directory
                 path, not a file path (i.e., in the same format as the source, without
-                the file name and extension).
+                the file name and extension). It must be in the same s3 bucket or
+                SharePoint library as the source file.
             source_handling (Literal["archive", "delete", "none"]): How to handle the
                  source file after a successful transfer.
 
@@ -288,7 +289,7 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), content_size
         )
-        self.sharepoint_connector.verify_uploaded_file(content_size)
+        self.sharepoint_connector.verify_uploaded_file(content_size, "destination")
 
     def archive_source_file(
         self, source: str, archive_folder: str, content_size: int
@@ -297,7 +298,7 @@ class UploadToSharePointEngine(Engine):
 
         Args:
             source (str): The source S3 key.
-            archive_folder (str): The SharePoint folder to move the source file to.
+            archive_folder (str): The S3 key to move the source file to.
                 This must be a folder path, not a file path (i.e., in the same format
                 as the source, without the file name and extension).
             content_size (int): The size of the content in bytes.
@@ -435,12 +436,13 @@ class UploadToS3Engine(Engine):
         self.sharepoint_connector.set_download_url()
         return self.sharepoint_connector.fetch_file()
 
-    def upload_file(self, content: bytes, destination: str) -> None:
+    def upload_file(self, content: bytes, destination: str, content_size: int) -> None:
         """Upload a file to S3 and verify the uploaded object.
 
         Args:
             content (bytes): The content of the file to upload as bytes.
             destination (str): The destination S3 key.
+            content_size (int): The size of the content in bytes.
 
         Raises:
             ProcessingError: If the S3 upload or verification fails.
@@ -448,25 +450,52 @@ class UploadToS3Engine(Engine):
         """
         log.info(
             "Uploading %s bytes to S3 destination s3://%s/%s.",
-            len(content),
+            content_size,
             self.bucket.bucket,
             destination,
         )
-        self.s3_connector.update_with_key(destination)
+        self.s3_connector.set_key(destination)
         self.s3_connector.upload_to_s3(content)
-        self.s3_connector.verify_uploaded_object(expected_size=len(content))
+        self.s3_connector.verify_uploaded_object(content_size, "destination")
 
-    def delete_source_file(self, source: str) -> None:
-        """Delete a file from S3.
+    def archive_source_file(
+        self, source: str, archive_folder: str, content_size: int
+    ) -> None:
+        """Archive a file in SharePoint.
 
         Args:
-            source (str): The source S3 key.
+            source (str): The source SharePoint file path.
+            archive_folder (str): The SharePoint folder to move the source file to.
+                This must be a folder path, not a file path (i.e., in the same format
+                as the source, without the file name and extension).
+            content_size (int): The size of the content in bytes.
+
+        Raises:
+            NoArchiveFolderGivenError: If archive_folder is not provided when
+                source_handling is 'archive'.
+            ProcessingError: If the SharePoint archiving fails.
+
+        """
+        archive_path = str(Path(archive_folder) / Path(source).name)
+        log.info(
+            "Archiving transferred source object in SharePoint: '%s' -> '%s'",
+            source,
+            archive_path,
+        )
+        self.sharepoint_connector.set_archive_url(archive_folder)
+        self.sharepoint_connector.archive_file(content_size)
+
+    def delete_source_file(self, source: str) -> None:
+        """Delete a file from SharePoint.
+
+        Args:
+            source (str): The source SharePoint file path.
 
         Returns:
             None
 
         Raises:
-            ProcessingError: If the S3 deletion fails.
+            ProcessingError: If the SharePoint deletion fails.
 
         """
         log.info("Deleting transferred source file from SharePoint: '%s'", source)
