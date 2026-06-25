@@ -609,10 +609,9 @@ class SharePointConnector(BaseModel):
                 data=source_content,
                 timeout=30,
             )
+            resp.raise_for_status()
         except requests.RequestException as exc:
             err = f"Failed to archive file in SharePoint: {exc}"
             raise ProcessingError(err) from exc
-
-        resp.raise_for_status()
         self.verify_uploaded_file(expected_size=content_size, verify_type="archive")
         self.delete_file()
