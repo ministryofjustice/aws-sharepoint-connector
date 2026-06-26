@@ -32,6 +32,7 @@ dev = [
 package = [
     "packaging>=26.2",
     "python-semantic-release>=10.5.3",
+    "toml>=0.10.2",
     "typer>=0.26.7",
 ]
 test = [
