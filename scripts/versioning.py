@@ -5,9 +5,7 @@ import os
 import urllib.request
 
 from packaging.version import Version
-from typer import BadParameter
-from typer import Typer
-from typer import echo
+from typer import BadParameter, Typer, echo
 
 app = Typer()
 
@@ -23,9 +21,7 @@ def check_url(url: str) -> None:
 
 
 @app.command("validate")
-def validate_newer_version(
-    version: str | None = None, url: str = prod_url
-) -> None:
+def validate_newer_version(version: str | None = None, url: str = prod_url) -> None:
     """Validate version is newer than current PyPI."""
     resolved_version = version or os.environ.get("CANDIDATE_VERSION")
     if not resolved_version:
