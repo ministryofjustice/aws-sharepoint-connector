@@ -30,7 +30,7 @@ def validate_newer_version(version: str | None = None, url: str = prod_url) -> N
 
     candidate = Version(resolved_version)
     check_url(url)
-    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
+    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first # nosec
         data = json.load(response)
 
     releases = [Version(v) for v in data.get("releases", {})]
@@ -52,7 +52,7 @@ def check_test_version_exists(version: str | None = None, url: str = test_url) -
 
     try:
         check_url(url)
-        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first
+        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first # nosec -
             data = json.load(response)
     except Exception:  # noqa: BLE001 just returning bool
         echo("false")
