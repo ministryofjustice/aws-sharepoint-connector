@@ -100,6 +100,7 @@ test = [
     { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "typer" },
 ]
 
 [package.metadata]
@@ -128,6 +129,7 @@ test = [
     { name = "pandas", specifier = ">=3.0.2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "typer", specifier = ">=0.26.7" },
 ]
 
 [[package]]

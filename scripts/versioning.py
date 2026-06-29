@@ -2,6 +2,7 @@
 
 import json
 import os
+import urllib.error
 import urllib.request
 
 from packaging.version import Version
@@ -11,6 +12,8 @@ app = Typer()
 
 prod_url = "https://pypi.org/pypi/aws-sharepoint-connector/json"
 test_url = "https://test.pypi.org/pypi/aws-sharepoint-connector/json"
+
+MISSING_ERROR_CODE = 404
 
 
 def check_url(url: str) -> None:
@@ -30,8 +33,13 @@ def validate_newer_version(version: str | None = None, url: str = prod_url) -> N
 
     candidate = Version(resolved_version)
     check_url(url)
-    with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first # nosec
-        data = json.load(response)
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 using check url first # nosec
+            data = json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == MISSING_ERROR_CODE:
+            return
+        raise
 
     releases = [Version(v) for v in data.get("releases", {})]
     if releases:
