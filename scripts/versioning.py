@@ -15,6 +15,7 @@ test_url = "https://test.pypi.org/pypi/aws-sharepoint-connector/json"
 
 MISSING_ERROR_CODE = 404
 
+
 def check_url(url: str) -> None:
     """Check url is url and not file."""
     if not url.startswith(("http:", "https:")):

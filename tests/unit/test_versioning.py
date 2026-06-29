@@ -1,4 +1,5 @@
 """Unit tests for scripts.versioning helpers and CLI commands."""
+
 import typing
 from email.message import Message
 from urllib.error import HTTPError
