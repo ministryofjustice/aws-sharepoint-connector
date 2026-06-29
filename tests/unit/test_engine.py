@@ -7,7 +7,10 @@ import pytest
 
 from aws_sharepoint_connector import engine
 from aws_sharepoint_connector.config import SecretConfig
-from aws_sharepoint_connector.exceptions import ProcessingError
+from aws_sharepoint_connector.exceptions import (
+    NoArchiveFolderGivenError,
+    ProcessingError,
+)
 from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.sharepoint import SharePointConnector
 from tests import test_utils as utils

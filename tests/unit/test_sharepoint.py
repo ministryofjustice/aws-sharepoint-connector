@@ -226,7 +226,7 @@ def test_set_upload_url_request_error() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.post",
+            "aws_sharepoint_connector.sharepoint.requests.post",
             side_effect=requests.RequestException("network error"),
         ),
         pytest.raises(
@@ -789,7 +789,7 @@ def test_archive_file_success() -> None:
             return_value=payload,
         ) as mock_fetch,
         patch(
-            "connector.sharepoint.requests.put",
+            "aws_sharepoint_connector.sharepoint.requests.put",
             return_value=utils.build_response(status_code=201),
         ) as mock_put,
         patch.object(SharePointConnector, "verify_uploaded_file") as mock_verify,
@@ -820,7 +820,7 @@ def test_archive_file_request_error() -> None:
             return_value=b"content",
         ),
         patch(
-            "connector.sharepoint.requests.put",
+            "aws_sharepoint_connector.sharepoint.requests.put",
             side_effect=requests.RequestException("network error"),
         ),
         patch.object(SharePointConnector, "delete_file") as mock_delete,
@@ -844,7 +844,7 @@ def test_archive_file_upload_error() -> None:
             return_value=b"content",
         ),
         patch(
-            "connector.sharepoint.requests.put",
+            "aws_sharepoint_connector.sharepoint.requests.put",
             return_value=utils.build_response(status_code=500),
         ),
         patch.object(SharePointConnector, "delete_file") as mock_delete,
@@ -868,7 +868,7 @@ def test_archive_file_verify_error() -> None:
             return_value=b"content",
         ),
         patch(
-            "connector.sharepoint.requests.put",
+            "aws_sharepoint_connector.sharepoint.requests.put",
             return_value=utils.build_response(status_code=201),
         ),
         patch.object(
