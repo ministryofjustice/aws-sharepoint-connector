@@ -1,5 +1,6 @@
 """Unit tests for scripts.versioning helpers and CLI commands."""
-
+import typing
+from email.message import Message
 from urllib.error import HTTPError
 
 import pytest
@@ -13,8 +14,9 @@ class _DummyUrlResponseContext:
     def __enter__(self) -> object:
         return object()
 
-    def __exit__(self, *args: object) -> bool:
+    def __exit__(self, *args: object) -> typing.Literal[False]:
         return False
+
 
 def test_validate_newer_version_allows_missing_package_404(
     monkeypatch: pytest.MonkeyPatch,
@@ -24,7 +26,7 @@ def test_validate_newer_version_allows_missing_package_404(
         url="https://pypi.org/pypi/aws-sharepoint-connector/json",
         code=404,
         msg="Not Found",
-        hdrs=None,
+        hdrs=Message(),
         fp=None,
     )
 
@@ -44,7 +46,7 @@ def test_validate_newer_version_raises_for_non_404_http_errors(
         url="https://pypi.org/pypi/aws-sharepoint-connector/json",
         code=500,
         msg="Server Error",
-        hdrs=None,
+        hdrs=Message(),
         fp=None,
     )
 
