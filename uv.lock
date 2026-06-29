@@ -73,7 +73,7 @@ wheels = [
 
 [[package]]
 name = "aws-sharepoint-connector"
-version = "1.2.0"
+version = "1.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },
