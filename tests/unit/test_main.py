@@ -5,15 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
-from connector import engine as engine_module
-from connector.exceptions import InvalidModeError
-from connector.main import create_engine
+from aws_sharepoint_connector import engine as engine_module
+from aws_sharepoint_connector.exceptions import InvalidModeError
+from aws_sharepoint_connector.main import create_engine
 
 
 @pytest.fixture(autouse=True)
 def suppress_engine_init() -> Generator[None]:
     """Prevent Engine.__post_init__ from making real API calls in all tests."""
-    with patch("connector.engine.Engine.__post_init__"):
+    with patch("aws_sharepoint_connector.engine.Engine.__post_init__"):
         yield
 
 

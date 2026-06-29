@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from connector.config import (
+from aws_sharepoint_connector.config import (
     S3Bucket,
     SecretConfig,
     SharePointLibrary,

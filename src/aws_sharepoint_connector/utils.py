@@ -9,7 +9,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from connector.constants import RETRYABLE_ERROR_CODES
+from aws_sharepoint_connector.constants import RETRYABLE_ERROR_CODES
 
 if TYPE_CHECKING:
     from collections.abc import Callable

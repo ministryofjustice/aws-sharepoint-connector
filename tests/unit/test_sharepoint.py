@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from connector.config import SecretConfig
-from connector.exceptions import (
+from aws_sharepoint_connector.config import SecretConfig
+from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
     NoLibraryError,
@@ -17,7 +17,7 @@ from connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
-from connector.sharepoint import SharePointConnector
+from aws_sharepoint_connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
 SP_SITE = utils.SP_SITE  # "analytics-site"
@@ -72,7 +72,7 @@ def test_get_site_id_success() -> None:
     connector = make_connector()
 
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         return_value=utils.mock_site_id_response(),
     ) as mock_get:
         site_id = connector.get_site_id()
@@ -95,7 +95,7 @@ def test_get_site_id_missing_id() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=200, json_body={}),
         ),
         pytest.raises(NoSiteError, match="no site ID"),
@@ -108,7 +108,7 @@ def test_get_drive_id_success() -> None:
     connector = make_connector()
 
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[
             utils.mock_site_id_response(),
             utils.mock_drive_id_response(content="complete"),
@@ -147,7 +147,7 @@ def test_set_drive_id_error(exception: Exception) -> None:
     with (
         utils.sharepoint_connector_patches(),
         patch(
-            "connector.sharepoint.SharePointConnector.get_site_id",
+            "aws_sharepoint_connector.sharepoint.SharePointConnector.get_site_id",
             side_effect=exception,
         ),
         pytest.raises(ProcessingError),
@@ -160,7 +160,7 @@ def test_set_drive_id_no_library_error() -> None:
     with (
         utils.sharepoint_connector_patches(),
         patch(
-            "connector.auth.get_drive_id",
+            "aws_sharepoint_connector.auth.get_drive_id",
             side_effect=NoLibraryError("Library 'Documents' not found on site 'x'"),
         ),
         pytest.raises(ProcessingError, match="Could not connect to SharePoint library"),
@@ -195,7 +195,7 @@ def test_set_upload_url() -> None:
     connector.update_with_file_path(SP_FILE_PATH)
 
     with patch(
-        "connector.sharepoint.requests.post",
+        "aws_sharepoint_connector.sharepoint.requests.post",
         return_value=utils.mock_upload_url_response(),
     ) as mock_post:
         connector.set_upload_url()
@@ -273,7 +273,7 @@ def test_list_files_success() -> None:
     archive_page = utils.mock_list_files_response(file_names=[])
 
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[root_page, archive_page],
     ):
         result = connector.list_files()
@@ -288,7 +288,7 @@ def test_list_files_pagination() -> None:
     page2 = utils.mock_list_files_response(file_names=["b.csv", "c.csv"])
     connector = make_connector()
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[page1, page2],
     ):
         result = connector.list_files()
@@ -307,7 +307,7 @@ def test_list_files_recurses_into_folders() -> None:
 
     connector = make_connector()
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[root_page, child_page],
     ):
         result = connector.list_files()
@@ -320,7 +320,7 @@ def test_list_files_request_error() -> None:
     connector = make_connector()
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             side_effect=requests.RequestException("timeout"),
         ),
         pytest.raises(
@@ -344,7 +344,7 @@ def test_check_object_exists_success(
     connector = make_connector()
     response = utils.mock_check_object_response(200, object_name, object_type)
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         return_value=response,
     ):
         connector.check_object_exists(
@@ -366,7 +366,7 @@ def test_check_object_exists_not_found(
     connector = make_connector()
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404, json_body={}),
         ),
         pytest.raises(ObjectNotFoundError, match=match_message),
@@ -422,7 +422,7 @@ def test_check_object_exists_request_error(
     connector = make_connector()
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             side_effect=requests.RequestException("network error"),
         ),
         pytest.raises(
@@ -440,7 +440,7 @@ def test_fetch_file_success() -> None:
     connector.set_download_url()
 
     with patch(
-        "connector.sharepoint.requests.get",
+        "aws_sharepoint_connector.sharepoint.requests.get",
         return_value=utils.mock_fetch_file_response(200),
     ):
         data = connector.fetch_file()
@@ -457,7 +457,7 @@ def test_fetch_file_not_found() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.mock_fetch_file_response(404),
         ),
         pytest.raises(ObjectNotFoundError, match="File not found in SharePoint"),
@@ -474,7 +474,7 @@ def test_fetch_file_request_error() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             side_effect=requests.RequestException("Mock request error"),
         ),
         pytest.raises(ProcessingError, match="Failed to fetch file from SharePoint"),
@@ -521,7 +521,7 @@ def test_verify_uploaded_file_success(
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.mock_verify_uploaded_file_response(
                 200, file_name, expected_size
             ),
@@ -550,7 +550,7 @@ def test_verify_uploaded_not_found() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(status_code=404),
         ),
         pytest.raises(ObjectNotFoundError, match="Verification failed"),
@@ -566,7 +566,7 @@ def test_verify_uploaded_size_mismatch() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
                 json_body={"name": SP_FILE_NAME, "size": 999, "file": {}},
@@ -585,7 +585,7 @@ def test_verify_uploaded_file_request_error() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             side_effect=requests.RequestException("network error"),
         ),
         pytest.raises(ProcessingError, match="Failed to verify uploaded file"),
@@ -607,11 +607,11 @@ def test_upload_stream_in_chunks_success() -> None:
             ],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             return_value=utils.mock_get_next_start_response(0, len(payload)),
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             return_value=utils.mock_session_put_response(),
         ) as mock_put,
     ):
@@ -633,11 +633,11 @@ def test_upload_stream_in_chunks_permanent_error_raises() -> None:
             extra_post_side_effects=[utils.mock_upload_url_response()],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             return_value=utils.mock_get_next_start_response(0, len(payload)),
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             return_value=utils.mock_session_put_response(status_code=403),
         ),
     ):
@@ -657,11 +657,11 @@ def test_upload_stream_in_chunks_exceeds_retries_raises() -> None:
             extra_post_side_effects=[utils.mock_upload_url_response()],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             return_value=utils.mock_get_next_start_response(0, len(payload)),
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             side_effect=requests.exceptions.RequestException("network error"),
         ),
     ):
@@ -686,14 +686,14 @@ def test_upload_stream_in_chunks_request_exception_resumes_from_new_position() -
             ],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             side_effect=[
                 utils.mock_get_next_start_response(0, file_size),
                 utils.mock_get_next_start_response(resume_pos, file_size),
             ],
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             side_effect=[
                 requests.exceptions.RequestException("network error"),
                 utils.mock_session_put_response(200),
@@ -723,11 +723,11 @@ def test_upload_stream_in_chunks_transient_error_exceeds_retries_raises() -> Non
             extra_post_side_effects=[utils.mock_upload_url_response()],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             side_effect=session_get_responses,
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             side_effect=session_put_responses,
         ),
     ):
@@ -752,14 +752,14 @@ def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> 
             ],
         ),
         patch(
-            "connector.sharepoint.requests.Session.get",
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
             side_effect=[
                 utils.mock_get_next_start_response(0, file_size),
                 utils.mock_get_next_start_response(resume_pos, file_size),
             ],
         ),
         patch(
-            "connector.sharepoint.requests.Session.put",
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
             side_effect=[
                 utils.mock_session_put_response(503),
                 utils.mock_session_put_response(200),
@@ -894,7 +894,7 @@ def test_delete_file_success() -> None:
     )
 
     with patch(
-        "connector.sharepoint.requests.delete",
+        "aws_sharepoint_connector.sharepoint.requests.delete",
         return_value=utils.build_response(status_code=204),
     ) as mock_delete:
         connector.delete_file()
@@ -914,7 +914,7 @@ def test_delete_file_not_found() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.delete",
+            "aws_sharepoint_connector.sharepoint.requests.delete",
             return_value=utils.build_response(status_code=404),
         ),
         pytest.raises(
@@ -931,7 +931,7 @@ def test_delete_file_request_error() -> None:
 
     with (
         patch(
-            "connector.sharepoint.requests.delete",
+            "aws_sharepoint_connector.sharepoint.requests.delete",
             side_effect=requests.RequestException("network error"),
         ),
         pytest.raises(ProcessingError, match="Failed to delete file from SharePoint"),

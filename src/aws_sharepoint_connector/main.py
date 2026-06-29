@@ -2,14 +2,14 @@
 
 from typing import Literal
 
-from connector import utils
-from connector.config import (
+from aws_sharepoint_connector import utils
+from aws_sharepoint_connector.config import (
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
 )
-from connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from connector.exceptions import InvalidModeError
+from aws_sharepoint_connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from aws_sharepoint_connector.exceptions import InvalidModeError
 
 log = utils.setup_logger()
 
@@ -32,8 +32,8 @@ def create_engine(
     Each is configured with the same SharePoint site, SharePoint library, and S3 bucket.
     The engine will parse one as the source and one as the destination.
 
-    Make use of the 'list_source_files' method to identify what files are located in the source
-    and amend according to your needs.
+    Make use of the 'list_source_files' method to identify what files are located in the
+    source and amend according to your needs.
 
     Iterate over each file to be transferred and call the 'run' method with the
     source and destination paths to perform the transfer. An s3 source/destination is

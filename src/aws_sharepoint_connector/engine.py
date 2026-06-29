@@ -8,20 +8,20 @@ from typing import Any, Literal
 
 import boto3
 
-from connector.config import (
+from aws_sharepoint_connector.config import (
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
 )
-from connector.exceptions import (
+from aws_sharepoint_connector.exceptions import (
     IncorrectObjectTypeError,
     NoArchiveFolderGivenError,
     ObjectNotFoundError,
     ProcessingError,
 )
-from connector.s3 import S3Connector
-from connector.sharepoint import SharePointConnector
-from connector.utils import setup_logger
+from aws_sharepoint_connector.s3 import S3Connector
+from aws_sharepoint_connector.sharepoint import SharePointConnector
+from aws_sharepoint_connector.utils import setup_logger
 
 log = setup_logger()
 

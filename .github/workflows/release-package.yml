@@ -1,0 +1,110 @@
+---
+name: Release Package
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+  push:
+    branches: [main]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency: release
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: latest
+
+      - name: Python Semantic Release
+        uses: python-semantic-release/python-semantic-release@350c48fcb3ffcdfd2e0a235206bc2ecea6b69df0 # v10.5.3
+        id: semantic-release
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          git_committer_name: github-actions
+          git_committer_email: actions@users.noreply.github.com
+          build: false
+          changelog: false
+          no_operation_mode: ${{ github.ref_name != 'main' }}
+
+      - name: Compute publish version
+        if: ${{ steps.semantic-release.outputs.released == 'true' }}
+        id: publish-version
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "version=${{ steps.semantic-release.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            base_version="${{ steps.semantic-release.outputs.tag }}"
+            pep440_version="${base_version/-rc./rc}"
+            echo "version=${pep440_version}.dev${GITHUB_RUN_NUMBER}${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check if test package version already exists
+        if: ${{ github.ref_name != 'main' && steps.semantic-release.outputs.released == 'true' }}
+        id: testpypi-check
+        run: |
+          uv sync --group package
+          EXISTS=$(uv run scripts/versioning.py check)
+          echo "exists=$EXISTS" >> "$GITHUB_OUTPUT"
+        env:
+          VERSION: ${{ steps.publish-version.outputs.version }}
+
+      - name: Update package version locally
+        if: ${{ steps.semantic-release.outputs.released == 'true' }}
+        run: |
+          uv sync --group package
+          uv run toml set \
+          --toml-path=pyproject.toml \
+          project.version $VERSION
+        env:
+          VERSION: ${{ steps.publish-version.outputs.version }}
+
+      - name: Build package
+        if: ${{ steps.semantic-release.outputs.released == 'true' }}
+        run: |
+           uv sync
+           uv build
+
+      - name: Push to test pypi
+        if: ${{ github.ref_name != 'main' && steps.semantic-release.outputs.released == 'true' && steps.testpypi-check.outputs.exists != 'true' }}
+        run: |
+          uv publish \
+            --publish-url https://test.pypi.org/legacy/ \
+            --check-url https://test.pypi.org/simple/ \
+            dist/*
+
+      - name: Test install package
+        if: ${{ github.ref_name != 'main' && steps.semantic-release.outputs.released == 'true' && steps.testpypi-check.outputs.exists != 'true' }}
+        run: |
+          uv run --no-project \
+          --index-url https://test.pypi.org/simple \
+          --extra-index-url https://pypi.org/simple \
+          --with aws-sharepoint-connector==${{ steps.publish-version.outputs.version }} \
+          python -c "import aws_sharepoint_connector"
+
+      - name: Skip test publish when version exists
+        if: ${{ github.ref_name != 'main' && steps.semantic-release.outputs.released == 'true' && steps.testpypi-check.outputs.exists == 'true' }}
+        run: echo "Version ${{ steps.publish-version.outputs.version }} already exists on TestPyPI; skipping publish and install validation."
+      - name: Validate version is newer than current PyPI
+        if: ${{ github.ref_name == 'main' && steps.semantic-release.outputs.released == 'true' }}
+        run: |
+          uv sync --group package
+          uv run scripts/versioning.py validate
+        env:
+          CANDIDATE_VERSION: ${{ steps.publish-version.outputs.version }}
+
+      - name: Push to pypi
+        if: ${{ steps.semantic-release.outputs.released == 'true' && github.ref_name == 'main' }}
+        run: |
+          uv publish \
+            --publish-url https://upload.pypi.org/legacy/ \
+            --check-url https://pypi.org/simple/ \
+            dist/*

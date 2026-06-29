@@ -3,9 +3,9 @@
 from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import ClientSecretCredential, CredentialUnavailableError
 
-from connector.constants import SCOPE
-from connector.exceptions import NoLibraryError, ProcessingError
-from connector.utils import request_with_retry
+from aws_sharepoint_connector.constants import SCOPE
+from aws_sharepoint_connector.exceptions import NoLibraryError, ProcessingError
+from aws_sharepoint_connector.utils import request_with_retry
 
 
 def get_azure_token(tenant_id: str, client_id: str, client_secret: str) -> str:

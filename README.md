@@ -233,7 +233,7 @@ Import `create_engine` from the `connector` package.
 The Azure secret values must be present as environment variables.
 
 ```python
-from connector import create_engine
+from aws_sharepoint_connector import create_engine
 
 engine = create_engine(
     mode="write_to_s3",
