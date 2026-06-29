@@ -6,8 +6,8 @@ import boto3
 import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 
-from connector.exceptions import FileSizeMismatchError, ProcessingError
-from connector.s3 import S3Connector
+from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
+from aws_sharepoint_connector.s3 import S3Connector
 from tests import test_utils as utils
 
 S3_BUCKET = utils.S3_BUCKET  # "my-source-bucket"

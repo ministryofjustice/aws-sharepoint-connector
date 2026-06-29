@@ -10,7 +10,7 @@ import boto3
 from azure.core.credentials import AccessToken
 from requests import Response
 
-from connector.config import S3Bucket, SharePointLibrary
+from aws_sharepoint_connector.config import S3Bucket, SharePointLibrary
 
 SP_SITE = "analytics-site"
 SP_LIBRARY = "Documents"
@@ -200,15 +200,15 @@ def sharepoint_connector_patches(
 
     with (
         patch(
-            "connector.auth.ClientSecretCredential.get_token",
+            "aws_sharepoint_connector.auth.ClientSecretCredential.get_token",
             side_effect=mock_get_token,
         ) as mock_token,
         patch(
-            "connector.sharepoint.requests.get",
+            "aws_sharepoint_connector.sharepoint.requests.get",
             side_effect=get_side_effects,
         ) as mock_get,
         patch(
-            "connector.sharepoint.requests.post",
+            "aws_sharepoint_connector.sharepoint.requests.post",
             side_effect=post_side_effects,
         ) as mock_post,
     ):

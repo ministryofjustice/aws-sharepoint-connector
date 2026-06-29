@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from connector import auth
-from connector.config import SecretConfig
-from connector.exceptions import NoLibraryError
+from aws_sharepoint_connector import auth
+from aws_sharepoint_connector.config import SecretConfig
+from aws_sharepoint_connector.exceptions import NoLibraryError
 from tests import test_utils as utils
 
 SP_SITE_ID = utils.SP_SITE  # used as fake site_id value in drive tests

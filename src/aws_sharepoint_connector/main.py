@@ -2,14 +2,14 @@
 
 from typing import Literal
 
-from connector import utils
-from connector.config import (
+from aws_sharepoint_connector import utils
+from aws_sharepoint_connector.config import (
     S3Bucket,
     SecretConfig,
     SharePointLibrary,
 )
-from connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from connector.exceptions import InvalidModeError
+from aws_sharepoint_connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from aws_sharepoint_connector.exceptions import InvalidModeError
 
 log = utils.setup_logger()
 

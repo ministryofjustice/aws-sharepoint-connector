@@ -5,11 +5,11 @@ from unittest.mock import patch
 import boto3
 import pytest
 
-from connector import engine
-from connector.config import SecretConfig
-from connector.exceptions import ProcessingError
-from connector.s3 import S3Connector
-from connector.sharepoint import SharePointConnector
+from aws_sharepoint_connector import engine
+from aws_sharepoint_connector.config import SecretConfig
+from aws_sharepoint_connector.exceptions import ProcessingError
+from aws_sharepoint_connector.s3 import S3Connector
+from aws_sharepoint_connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
 SP_FILE_PATH = utils.SP_FILE_PATH

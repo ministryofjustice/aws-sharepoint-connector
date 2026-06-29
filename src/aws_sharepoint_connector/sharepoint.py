@@ -9,12 +9,12 @@ from urllib.parse import quote
 import requests
 from pydantic import BaseModel, Field
 
-from connector import auth
-from connector.config import (
+from aws_sharepoint_connector import auth
+from aws_sharepoint_connector.config import (
     SecretConfig,
     SharePointLibrary,
 )
-from connector.constants import (
+from aws_sharepoint_connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
@@ -23,7 +23,7 @@ from connector.constants import (
     SHAREPOINT_DOMAIN,
     TOO_MANY_REQUESTS_CODE,
 )
-from connector.exceptions import (
+from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
     NoLibraryError,
@@ -31,7 +31,7 @@ from connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
-from connector.utils import build_retry_session, request_with_retry
+from aws_sharepoint_connector.utils import build_retry_session, request_with_retry
 
 log = logging.getLogger("s3-sharepoint")
 

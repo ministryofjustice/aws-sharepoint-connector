@@ -4,9 +4,9 @@ import os
 
 import boto3
 
-from connector import create_engine
-from connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from connector.exceptions import ProcessingError
+from aws_sharepoint_connector import create_engine
+from aws_sharepoint_connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from aws_sharepoint_connector.exceptions import ProcessingError
 
 
 def run_plans(

@@ -5,8 +5,8 @@ from typing import Any
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
 
-from connector.exceptions import FileSizeMismatchError, ProcessingError
-from connector.utils import setup_logger
+from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
+from aws_sharepoint_connector.utils import setup_logger
 
 log = setup_logger()
 
