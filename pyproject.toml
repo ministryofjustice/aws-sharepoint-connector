@@ -60,7 +60,7 @@ mypy_path = "src"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
+addopts = "--cov=src --cov=scripts --cov-report=term-missing --cov-report=xml"
 
 [tool.ruff.lint]
 select = ["ALL"]
