@@ -39,7 +39,8 @@ test = [
     "moto>=5.2.0",
     "pandas>=3.0.2",
     "pytest>=9.0.3",
-    "pytest-cov>=7.0.0"
+    "pytest-cov>=7.0.0",
+    "typer>=0.26.7",
 ]
 
 [tool.uv]
