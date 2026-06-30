@@ -67,7 +67,7 @@ class TestEngines:
             patch.object(S3Connector, "check_object_exists"),
             patch.object(SharePointConnector, "check_object_exists"),
         ):
-            upload_sp_engine.validate_plan(
+            upload_sp_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
         assert True  #  No exceptions raised
@@ -102,7 +102,7 @@ class TestEngines:
             ),
             pytest.raises(ProcessingError) as exc_info,
         ):
-            upload_sp_engine.validate_plan(
+            upload_sp_engine._validate_plan(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
             )
@@ -131,7 +131,7 @@ class TestEngines:
             patch.object(S3Connector, "check_object_exists"),
             pytest.raises(ProcessingError) as exc_info,
         ):
-            upload_sp_engine.validate_plan(
+            upload_sp_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 
@@ -148,7 +148,7 @@ class TestEngines:
             patch.object(S3Connector, "set_key") as mock_update_key,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            data = upload_sp_engine.download_file(S3_KEY)
+            data = upload_sp_engine._download_file(S3_KEY)
 
         assert data == b"file content"
         mock_update_key.assert_called_once_with(S3_KEY)
@@ -169,7 +169,7 @@ class TestEngines:
             ) as mock_verify_upload,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.upload_file(
+            upload_sp_engine._upload_file(
                 b"Test content", SP_FILE_PATH, len(b"Test content")
             )
 
@@ -187,7 +187,7 @@ class TestEngines:
             patch.object(S3Connector, "delete_object") as mock_delete_object,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.delete_source_file(S3_KEY)
+            upload_sp_engine._delete_source_file(S3_KEY)
 
         mock_update_key.assert_called_once_with(S3_KEY)
         mock_delete_object.assert_called_once_with()
@@ -201,7 +201,7 @@ class TestEngines:
             patch.object(S3Connector, "archive_object") as mock_archive_object,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.archive_source_file(S3_KEY, archive_folder, 123)
+            upload_sp_engine._archive_source_file(S3_KEY, archive_folder, 123)
 
         mock_set_archive_key.assert_called_once_with("archive/reports/2026/file1.csv")
         mock_archive_object.assert_called_once_with(123)
@@ -353,7 +353,7 @@ class TestEngines:
             patch.object(S3Connector, "check_bucket_exists"),
             patch.object(SharePointConnector, "check_object_exists"),
         ):
-            upload_s3_engine.validate_plan(
+            upload_s3_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
         assert True  #  No exceptions raised
@@ -384,7 +384,7 @@ class TestEngines:
             ),
             pytest.raises(ProcessingError) as exc_info,
         ):
-            upload_s3_engine.validate_plan(
+            upload_s3_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 
@@ -408,7 +408,7 @@ class TestEngines:
             ),
             pytest.raises(ProcessingError) as exc_info,
         ):
-            upload_s3_engine.validate_plan(
+            upload_s3_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 
@@ -428,7 +428,7 @@ class TestEngines:
             ) as mock_fetch_file,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            data = upload_s3_engine.download_file(SP_FILE_PATH)
+            data = upload_s3_engine._download_file(SP_FILE_PATH)
 
         assert data == b"file content"
         mock_update_filepath.assert_called_once_with(SP_FILE_PATH)
@@ -443,7 +443,7 @@ class TestEngines:
             patch.object(S3Connector, "verify_uploaded_object") as mock_verify_upload,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.upload_file(
+            upload_s3_engine._upload_file(
                 b"Test content", SP_FILE_PATH, len(b"Test content")
             )
 
@@ -460,7 +460,7 @@ class TestEngines:
             patch.object(SharePointConnector, "delete_file") as mock_delete_object,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.delete_source_file(SP_FILE_PATH)
+            upload_s3_engine._delete_source_file(SP_FILE_PATH)
 
         mock_update_filepath.assert_called_once_with(SP_FILE_PATH)
         mock_delete_object.assert_called_once_with()
@@ -476,7 +476,7 @@ class TestEngines:
             patch.object(SharePointConnector, "archive_file") as mock_archive_file,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.archive_source_file(SP_FILE_PATH, archive_folder, 123)
+            upload_s3_engine._archive_source_file(SP_FILE_PATH, archive_folder, 123)
 
         mock_set_archive_url.assert_called_once_with(archive_folder)
         mock_archive_file.assert_called_once_with(123)

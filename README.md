@@ -36,7 +36,7 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
 3. For each file, call `engine.copy(source, destination, archive_folder="", source_handling="none")`:
-    - Calls `engine.validate_plan` to validate the transfer before any file movement begins.
+    - Calls `engine._validate_plan` to validate the transfer before any file movement begins.
     - Download from the source system (SharePoint or S3).
     - Upload to the destination system (S3 or SharePoint).
     - Verify transfer was successful by comparing byte size.
@@ -50,13 +50,13 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 
 ### Core Components
 
-- `src/connector/main.py`: Public API — `create_engine()`
-- `src/connector/config.py`: Pydantic models for validated configuration.
-- `src/connector/engine.py`: Abstract transfer logic.
-- `src/connector/sharepoint.py`: SharePoint connector.
-- `src/connector/s3.py`: AWS S3 connector.
-- `src/connector/auth.py`: Azure authentication and Graph utilities.
-- `src/connector/utils.py`: Logger and HTTP retry logic.
+- `src/aws-sharepoint-connector/main.py`: Public API — `create_engine()`
+- `src/aws-sharepoint-connector/config.py`: Pydantic models for validated configuration.
+- `src/aws-sharepoint-connector/engine.py`: Abstract transfer logic.
+- `src/aws-sharepoint-connector/sharepoint.py`: SharePoint connector.
+- `src/aws-sharepoint-connector/s3.py`: AWS S3 connector.
+- `src/aws-sharepoint-connector/auth.py`: Azure authentication and Graph utilities.
+- `src/aws-sharepoint-connector/utils.py`: Logger and HTTP retry logic.
 
 ## Configuration
 

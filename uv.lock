@@ -81,13 +81,13 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "requests" },
-    { name = "types-requests" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "ruff" },
+    { name = "types-requests" },
 ]
 package = [
     { name = "packaging" },
@@ -110,13 +110,13 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "requests", specifier = ">=2.32.4" },
-    { name = "types-requests", specifier = ">=2.33.0.20260503" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.1.0" },
     { name = "ruff", specifier = ">=0.15.12" },
+    { name = "types-requests", specifier = ">=2.33.0.20260503" },
 ]
 package = [
     { name = "packaging", specifier = ">=26.2" },

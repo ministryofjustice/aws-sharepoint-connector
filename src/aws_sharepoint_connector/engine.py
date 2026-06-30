@@ -35,13 +35,14 @@ class Engine(ABC):
     downloading, uploading, and deleting files, as well as validating transfer plans.
 
     Methods:
-        list_source_files: List files available in the source storage.
-        download_file: Download a file from the source storage.
-        upload_file: Upload a file to the destination storage.
-        delete_source_file: Delete file from S3 after successful transfer.
-        archive_source_file: Archive file in the S3 after successful transfer.
-        validate_plan: Validate planned file movement is feasible before execution.
-        copy: Transfer a single file from source to destination storage.
+        _list_source_files: List files available in the source storage.
+        _download_file: Download a file from the source storage.
+        _upload_file: Upload a file to the destination storage.
+        _delete_source_file: Delete file from S3 after successful transfer.
+        _archive_source_file: Archive file in the S3 after successful transfer.
+        _validate_plan: Validate planned file movement is feasible before execution.
+        _copy: Transfer a single file from source to destination storage.
+        copy: Public method to transfer a single file from source to destination.
 
     """
 
@@ -73,35 +74,52 @@ class Engine(ABC):
         """List files available in the source storage."""
 
     @abstractmethod
-    def download_file(self, source: str) -> bytes:
+    def _download_file(self, source: str) -> bytes:
         """Download a file from the source storage."""
 
     @abstractmethod
-    def upload_file(self, content: bytes, destination: str, content_size: int) -> None:
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
         """Upload a file to the destination storage."""
 
     @abstractmethod
-    def archive_source_file(
+    def _archive_source_file(
         self, source: str, archive_folder: str, content_size: int
     ) -> None:
         """Archive a file in the source storage after successful transfer."""
 
     @abstractmethod
-    def delete_source_file(self, source: str) -> None:
+    def _delete_source_file(self, source: str) -> None:
         """Delete a file from the source storage after successful transfer."""
 
     @abstractmethod
-    def validate_plan(self, source: str, destination: str) -> None:
-        """Validate planned file movement is feasible before execution.
+    def _validate_plan(self, source: str, destination: str) -> None:
+        """Validate planned file movement is feasible before execution."""
 
-        Args:
-            source (str): Source file path (S3 key or SharePoint path).
-            destination (str): Destination file path (SharePoint path or S3 key).
+    def _copy(
+        self,
+        source: str,
+        destination: str,
+        archive_folder: str = "",
+        *,
+        source_handling: Literal["archive", "delete", "none"] = "none",
+    ) -> None:
+        """Transfer a single file from source to destination storage."""
+        self._validate_plan(source=source, destination=destination)
+        content = self._download_file(source)
 
-        Raises:
-            ProcessingError: If one or more validation checks fail.
+        content_size = len(content)
 
-        """
+        self._upload_file(content, destination, content_size)
+        log.info(
+            "Transfer workflow complete: '%s' -> '%s' (%s bytes transferred)",
+            source,
+            destination,
+            content_size,
+        )
+        if source_handling == "delete":
+            self._delete_source_file(source)
+        if source_handling == "archive":
+            self._archive_source_file(source, archive_folder, content_size)
 
     def copy(
         self,
@@ -150,22 +168,13 @@ class Engine(ABC):
             destination,
             source_handling,
         )
-        self.validate_plan(source=source, destination=destination)
-        content = self.download_file(source)
 
-        content_size = len(content)
-
-        self.upload_file(content, destination, content_size)
-        log.info(
-            "Transfer workflow complete: '%s' -> '%s' (%s bytes transferred)",
-            source,
-            destination,
-            content_size,
+        self._copy(
+            source=source,
+            destination=destination,
+            archive_folder=archive_folder,
+            source_handling=source_handling,
         )
-        if source_handling == "delete":
-            self.delete_source_file(source)
-        if source_handling == "archive":
-            self.archive_source_file(source, archive_folder, content_size)
 
 
 class UploadToSharePointEngine(Engine):
@@ -173,12 +182,13 @@ class UploadToSharePointEngine(Engine):
 
     Methods:
         list_source_files: List files available in the S3 source bucket.
-        download_file: Download a file from the S3 source bucket.
-        upload_file: Upload a file to the SharePoint destination.
-        delete_source_file: Delete file from S3 after successful transfer.
-        archive_source_file: Archive file in the S3 after successful transfer.
-        validate_plan: Validate planned file movement is feasible before execution.
-        copy: Transfer a single file from S3 to SharePoint.
+        _download_file: Download a file from the S3 source bucket.
+        _upload_file: Upload a file to the SharePoint destination.
+        _delete_source_file: Delete file from S3 after successful transfer.
+        _archive_source_file: Archive file in the S3 after successful transfer.
+        _validate_plan: Validate planned file movement is feasible before execution.
+        _copy: Transfer a single file from S3 to SharePoint.
+        copy: Public method to transfer a single file from S3 to SharePoint.
 
     """
 
@@ -197,7 +207,7 @@ class UploadToSharePointEngine(Engine):
         """
         return self.s3_connector.list_objects()
 
-    def validate_plan(self, source: str, destination: str) -> None:
+    def _validate_plan(self, source: str, destination: str) -> None:
         """Validate planned file movement is feasible before execution.
 
         Validates that:
@@ -250,7 +260,7 @@ class UploadToSharePointEngine(Engine):
 
         log.info("Validation complete for S3->SharePoint transfer plan.")
 
-    def download_file(self, source: str) -> bytes:
+    def _download_file(self, source: str) -> bytes:
         """Download a file from S3 and return its content as bytes.
 
         Args:
@@ -267,7 +277,7 @@ class UploadToSharePointEngine(Engine):
         self.s3_connector.set_key(source)
         return self.s3_connector.download_from_s3()
 
-    def upload_file(self, content: bytes, destination: str, content_size: int) -> None:
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
         """Upload a file to SharePoint.
 
         Args:
@@ -293,7 +303,7 @@ class UploadToSharePointEngine(Engine):
         )
         self.sharepoint_connector.verify_uploaded_file(content_size, "destination")
 
-    def archive_source_file(
+    def _archive_source_file(
         self, source: str, archive_folder: str, content_size: int
     ) -> None:
         """Archive a file in S3.
@@ -322,7 +332,7 @@ class UploadToSharePointEngine(Engine):
         self.s3_connector.set_archive_key(archive_key)
         self.s3_connector.archive_object(content_size)
 
-    def delete_source_file(self, source: str) -> None:
+    def _delete_source_file(self, source: str) -> None:
         """Delete a file from S3.
 
         Args:
@@ -349,12 +359,13 @@ class UploadToS3Engine(Engine):
 
     Methods:
         list_source_files: List files available in the SharePoint library.
-        download_file: Download a file from the SharePoint library.
-        upload_file: Upload a file to the S3 destination.
-        delete_source_file: Delete file from SharePoint after successful transfer.
-        archive_source_file: Archive file in SharePoint after successful transfer.
-        validate_plan: Validate planned file movement is feasible before execution.
-        copy: Transfer a single file from SharePoint to S3.
+        _download_file: Download a file from the SharePoint library.
+        _upload_file: Upload a file to the S3 destination.
+        _delete_source_file: Delete file from SharePoint after successful transfer.
+        _archive_source_file: Archive file in SharePoint after successful transfer.
+        _validate_plan: Validate planned file movement is feasible before execution.
+        _copy: Transfer a single file from SharePoint to S3.
+        copy: Public method to transfer a single file from SharePoint to S3.
 
     """
 
@@ -373,7 +384,7 @@ class UploadToS3Engine(Engine):
         """
         return self.sharepoint_connector.list_files()
 
-    def validate_plan(self, source: str, destination: str) -> None:
+    def _validate_plan(self, source: str, destination: str) -> None:
         """Validate planned file movement is feasible before execution.
 
         Validates that:
@@ -416,7 +427,7 @@ class UploadToS3Engine(Engine):
 
         log.info("Validation complete for SharePoint->S3 transfer plan.")
 
-    def download_file(self, source: str) -> bytes:
+    def _download_file(self, source: str) -> bytes:
         """Download a file from SharePoint and return its content as bytes.
 
         Args:
@@ -438,7 +449,7 @@ class UploadToS3Engine(Engine):
         self.sharepoint_connector.set_download_url()
         return self.sharepoint_connector.fetch_file()
 
-    def upload_file(self, content: bytes, destination: str, content_size: int) -> None:
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
         """Upload a file to S3 and verify the uploaded object.
 
         Args:
@@ -460,7 +471,7 @@ class UploadToS3Engine(Engine):
         self.s3_connector.upload_to_s3(content)
         self.s3_connector.verify_uploaded_object(content_size, "destination")
 
-    def archive_source_file(
+    def _archive_source_file(
         self, source: str, archive_folder: str, content_size: int
     ) -> None:
         """Archive a file in SharePoint.
@@ -487,7 +498,7 @@ class UploadToS3Engine(Engine):
         self.sharepoint_connector.set_archive_url(archive_folder)
         self.sharepoint_connector.archive_file(content_size)
 
-    def delete_source_file(self, source: str) -> None:
+    def _delete_source_file(self, source: str) -> None:
         """Delete a file from SharePoint.
 
         Args:
