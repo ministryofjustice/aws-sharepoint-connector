@@ -1,6 +1,6 @@
 """S3 connector for handling interactions with Amazon S3."""
 
-from typing import Any
+from typing import Any, Literal
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,11 +18,16 @@ class S3Connector(BaseModel):
 
     client: Any  # boto3 client; typed as Any because boto3.client is a factory function
     bucket: str
-    key: str = Field(default="", init=False)  # set per-file via update_with_key()
+    key: str = Field(default="", init=False)
+    archive_key: str = Field(default="", init=False)
 
-    def update_with_key(self, key: str) -> None:
+    def set_key(self, key: str) -> None:
         """Set the S3 object key for the current file operation."""
         self.key = key
+
+    def set_archive_key(self, archive_key: str) -> None:
+        """Set the S3 object key for the archive file operation."""
+        self.archive_key = archive_key
 
     def list_objects(self, prefix: str = "") -> list[str]:
         """List all object keys in the S3 bucket, optionally filtered by prefix.
@@ -102,23 +107,31 @@ class S3Connector(BaseModel):
             err = f"Failed to upload object to s3://{self.bucket}/{self.key}: {exc}"
             raise ProcessingError(err) from exc
 
-    def verify_uploaded_object(self, expected_size: int) -> None:
+    def verify_uploaded_object(
+        self, expected_size: int, verify_type: Literal["destination", "archive"]
+    ) -> None:
         """Verify object exists in S3 and matches expected byte size.
 
         Args:
             expected_size (int): The expected size of the uploaded object in bytes.
+            verify_type (Literal["destination", "archive"]): object being verified.
 
         Raises:
             FileSizeMismatchError: If the object size does not match the expected size.
             ProcessingError: If the object cannot be retrieved.
 
         """
+        if verify_type == "archive" and not self.archive_key:
+            err = "archive_key must be set for archive verification."
+            raise ProcessingError(err)
+        verify_key = self.key if verify_type == "destination" else self.archive_key
+
         try:
-            metadata = self.client.head_object(Bucket=self.bucket, Key=self.key)
+            metadata = self.client.head_object(Bucket=self.bucket, Key=verify_key)
         except (BotoCoreError, ClientError) as exc:
             err = (
                 "Failed to verify uploaded S3 object "
-                f"s3://{self.bucket}/{self.key}: {exc}"
+                f"s3://{self.bucket}/{verify_key}: {exc}"
             )
             raise ProcessingError(err) from exc
 
@@ -126,14 +139,14 @@ class S3Connector(BaseModel):
         if actual_size != expected_size:
             err = (
                 "Verification failed for uploaded S3 object "
-                f"s3://{self.bucket}/{self.key}: expected {expected_size} bytes, "
+                f"s3://{self.bucket}/{verify_key}: expected {expected_size} bytes, "
                 f"got {actual_size} bytes"
             )
             raise FileSizeMismatchError(err)
         log.info(
             "Verified S3 upload for s3://%s/%s (%s bytes).",
             self.bucket,
-            self.key,
+            verify_key,
             expected_size,
         )
 
@@ -204,4 +217,30 @@ class S3Connector(BaseModel):
             self.client.delete_object(Bucket=self.bucket, Key=self.key)
         except (BotoCoreError, ClientError) as exc:
             err = f"Failed to delete s3://{self.bucket}/{self.key}: {exc}"
+            raise ProcessingError(err) from exc
+
+    def archive_object(self, content_size: int) -> None:
+        """Archive the S3 object by copying it to a new key and deleting the original.
+
+        Args:
+            content_size (int): The size of the content in bytes.
+
+        Raises:
+            ProcessingError: If the copy or delete operation fails.
+
+        """
+        try:
+            copy_source = {"Bucket": self.bucket, "Key": self.key}
+            self.client.copy_object(
+                Bucket=self.bucket, CopySource=copy_source, Key=self.archive_key
+            )
+            self.verify_uploaded_object(
+                expected_size=content_size, verify_type="archive"
+            )
+            self.client.delete_object(Bucket=self.bucket, Key=self.key)
+        except (BotoCoreError, ClientError) as exc:
+            err = (
+                f"Failed to archive s3://{self.bucket}/{self.key} "
+                f"to s3://{self.bucket}/{self.archive_key}: {exc}"
+            )
             raise ProcessingError(err) from exc

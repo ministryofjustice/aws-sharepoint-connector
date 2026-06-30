@@ -218,6 +218,25 @@ def test_set_upload_url() -> None:
     }
 
 
+def test_set_upload_url_request_error() -> None:
+    """set_upload_url raises ProcessingError when upload session creation fails."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.post",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(
+            ProcessingError,
+            match="Failed to create SharePoint upload session",
+        ),
+    ):
+        connector.set_upload_url()
+
+
 def test_set_download_url() -> None:
     """Test that set_download_url builds the correct content URL."""
     connector = make_connector()
@@ -228,6 +247,19 @@ def test_set_download_url() -> None:
     assert connector.download_url == (
         "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
         "/root:/reports/2026/file1.csv:/content"
+    )
+
+
+def test_set_archive_url() -> None:
+    """Test that set_archive_url builds the correct archive URL."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    assert connector.archive_url == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+        "/root:/archive/reports/2026/file1.csv:/content"
     )
 
 
@@ -451,21 +483,30 @@ def test_fetch_file_request_error() -> None:
 
 
 @pytest.mark.parametrize(
-    ("file_path", "expected_verify_url"),
+    ("verify_type", "file_path", "expected_verify_url"),
     [
         (
+            "destination",
             SP_FILE_PATH,
             "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
             "/root:/reports/2026/file1.csv:?$select=name,size,file",
         ),
         (
+            "destination",
             SP_FILE_PATH_NO_DIR,
             "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
             "/root:/file6.csv:?$select=name,size,file",
         ),
+        (
+            "archive",
+            SP_FILE_PATH,
+            "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+            "/root:/archive/reports/2026/file1.csv:?$select=name,size,file",
+        ),
     ],
 )
 def test_verify_uploaded_file_success(
+    verify_type: Literal["destination", "archive"],
     file_path: str,
     expected_verify_url: str,
     caplog: pytest.LogCaptureFixture,
@@ -476,6 +517,7 @@ def test_verify_uploaded_file_success(
 
     connector = make_connector()
     connector.update_with_file_path(file_path)
+    connector.set_archive_url("archive/reports/2026/")  # for archive verification
 
     with (
         patch(
@@ -486,7 +528,7 @@ def test_verify_uploaded_file_success(
         ) as mock_verify,
         caplog.at_level(logging.INFO, logger="s3-sharepoint"),
     ):
-        connector.verify_uploaded_file(expected_size=expected_size)
+        connector.verify_uploaded_file(expected_size, verify_type=verify_type)
 
     assert (
         f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
@@ -513,7 +555,7 @@ def test_verify_uploaded_not_found() -> None:
         ),
         pytest.raises(ObjectNotFoundError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_verify_uploaded_size_mismatch() -> None:
@@ -532,7 +574,7 @@ def test_verify_uploaded_size_mismatch() -> None:
         ),
         pytest.raises(FileSizeMismatchError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_verify_uploaded_file_request_error() -> None:
@@ -548,7 +590,7 @@ def test_verify_uploaded_file_request_error() -> None:
         ),
         pytest.raises(ProcessingError, match="Failed to verify uploaded file"),
     ):
-        connector.verify_uploaded_file(expected_size=12)
+        connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
 def test_upload_stream_in_chunks_success() -> None:
@@ -731,6 +773,115 @@ def test_upload_stream_in_chunks_transient_error_resumes_from_new_position() -> 
 
     assert mock_put.call_count == 2
     assert len(mock_put.call_args_list[1][1]["data"]) == file_size - resume_pos
+
+
+def test_archive_file_success() -> None:
+    """archive_file uploads a copy, verifies it, then deletes the source file."""
+    payload = b"archived-content"
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "fetch_file",
+            return_value=payload,
+        ) as mock_fetch,
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.put",
+            return_value=utils.build_response(status_code=201),
+        ) as mock_put,
+        patch.object(SharePointConnector, "verify_uploaded_file") as mock_verify,
+        patch.object(SharePointConnector, "delete_file") as mock_delete,
+    ):
+        connector.archive_file(content_size=len(payload))
+
+    mock_fetch.assert_called_once_with()
+    assert mock_put.call_count == 1
+    assert mock_put.call_args[0][0] == connector.archive_url
+    assert mock_put.call_args[1]["data"] == payload
+    mock_verify.assert_called_once_with(
+        expected_size=len(payload), verify_type="archive"
+    )
+    mock_delete.assert_called_once_with()
+
+
+def test_archive_file_request_error() -> None:
+    """archive_file does not delete source when archive upload request fails."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "fetch_file",
+            return_value=b"content",
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.put",
+            side_effect=requests.RequestException("network error"),
+        ),
+        patch.object(SharePointConnector, "delete_file") as mock_delete,
+        pytest.raises(ProcessingError, match="Failed to archive file in SharePoint"),
+    ):
+        connector.archive_file(content_size=7)
+
+    mock_delete.assert_not_called()
+
+
+def test_archive_file_upload_error() -> None:
+    """archive_file does not delete source when archive upload fails."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "fetch_file",
+            return_value=b"content",
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.put",
+            return_value=utils.build_response(status_code=500),
+        ),
+        patch.object(SharePointConnector, "delete_file") as mock_delete,
+        pytest.raises(ProcessingError, match="Failed to archive file in SharePoint"),
+    ):
+        connector.archive_file(content_size=7)
+
+    mock_delete.assert_not_called()
+
+
+def test_archive_file_verify_error() -> None:
+    """archive_file does not delete source when archive verification fails."""
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+    connector.set_archive_url("archive/reports/2026/")
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "fetch_file",
+            return_value=b"content",
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.put",
+            return_value=utils.build_response(status_code=201),
+        ),
+        patch.object(
+            SharePointConnector,
+            "verify_uploaded_file",
+            side_effect=FileSizeMismatchError("Verification failed"),
+        ),
+        patch.object(SharePointConnector, "delete_file") as mock_delete,
+        pytest.raises(FileSizeMismatchError, match="Verification failed"),
+    ):
+        connector.archive_file(content_size=7)
+
+    mock_delete.assert_not_called()
 
 
 def test_delete_file_success() -> None:

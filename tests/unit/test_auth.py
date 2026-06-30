@@ -4,10 +4,12 @@ from typing import Literal
 from unittest.mock import patch
 
 import pytest
+from azure.core.exceptions import ClientAuthenticationError
+from azure.identity import CredentialUnavailableError
 
 from aws_sharepoint_connector import auth
 from aws_sharepoint_connector.config import SecretConfig
-from aws_sharepoint_connector.exceptions import NoLibraryError
+from aws_sharepoint_connector.exceptions import NoLibraryError, ProcessingError
 from tests import test_utils as utils
 
 SP_SITE_ID = utils.SP_SITE  # used as fake site_id value in drive tests
@@ -28,6 +30,34 @@ def test_get_azure_token() -> None:
             secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
         )
     assert token == "fake-token"  # noqa: S105  # nosec: B105
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        CredentialUnavailableError("credential unavailable"),
+        ClientAuthenticationError("authentication failed"),
+    ],
+)
+def test_get_azure_token_error(exception: Exception) -> None:
+    """get_azure_token raises ProcessingError when Azure auth fails."""
+    secrets = SecretConfig()  # type: ignore[call-arg]
+
+    with (
+        patch(
+            "azure.identity.ClientSecretCredential.get_token",
+            side_effect=exception,
+        ),
+        pytest.raises(
+            ProcessingError,
+            match="Failed to obtain Azure token",
+        ),
+    ):
+        auth.get_azure_token(
+            str(secrets.SECRET_AZURE_TENANT_ID),
+            secrets.SECRET_AZURE_CLIENT_ID.get_secret_value(),
+            secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value(),
+        )
 
 
 def test_get_drive_id_success() -> None:

@@ -47,6 +47,7 @@ class SharePointConnector(BaseModel):
     upload_url: str = Field(default="", init=False)
     download_url: str = Field(default="", init=False)
     file_path: str = Field(default="", init=False)
+    archive_url: str = Field(default="", init=False)
 
     def model_post_init(self, _: Any) -> None:  # noqa: ANN401
         """Post-initialization to set up SharePoint-specific attributes."""
@@ -208,6 +209,21 @@ class SharePointConnector(BaseModel):
         """
         self.download_url = f"{self.base_url}/content"
 
+    def set_archive_url(self, archive_folder: str) -> None:
+        """Generate the target SharePoint url for archiving files.
+
+        Args:
+            archive_folder (str): The archive destination folder in SharePoint.
+                The file name from ``self.file_path`` is appended automatically.
+
+        Returns:
+            None
+
+        """
+        archive_path = str(Path(archive_folder) / Path(self.file_path).name)
+        encoded_path = quote(archive_path, safe="/")
+        self.archive_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:/content"
+
     def list_files(self) -> list[str]:
         """List all files in the SharePoint library, including subfolders.
 
@@ -342,11 +358,14 @@ class SharePointConnector(BaseModel):
         file_resp.raise_for_status()
         return file_resp.content
 
-    def verify_uploaded_file(self, expected_size: int) -> None:
+    def verify_uploaded_file(
+        self, expected_size: int, verify_type: Literal["destination", "archive"]
+    ) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
 
         Args:
             expected_size (int): Expected size in bytes for the uploaded file.
+            verify_type (Literal["destination", "archive"]): Object being verified.
 
         Returns:
             None
@@ -358,7 +377,13 @@ class SharePointConnector(BaseModel):
 
         """
         expected_name = Path(self.file_path).name
-        verify_url = f"{self.base_url}?$select=name,size,file"
+
+        if verify_type == "destination":
+            verify_url = f"{self.base_url}?$select=name,size,file"
+        else:
+            archive_item_url = self.archive_url.removesuffix("/content")
+            verify_url = f"{archive_item_url}?$select=name,size,file"
+
         try:
             resp = request_with_retry(
                 "GET", verify_url, headers=self.headers, timeout=30
@@ -538,9 +563,6 @@ class SharePointConnector(BaseModel):
     def delete_file(self) -> None:
         """Delete a file from SharePoint.
 
-        Args:
-            path (str): The path of the file to delete in SharePoint.
-
         Returns:
             None
 
@@ -562,3 +584,32 @@ class SharePointConnector(BaseModel):
             err = f"File not found in SharePoint for deletion: '{self.base_url}'"
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
+
+    def archive_file(self, content_size: int) -> None:
+        """Archive a SharePoint file in ``archive_url`` and deleting source.
+
+        Args:
+            content_size (int): The size of the content in bytes.
+
+        Returns:
+            None
+
+        Raises:
+            ProcessingError: If the file cannot be archived due to an HTTP error.
+
+        """
+        source_content = self.fetch_file()
+
+        try:
+            resp = requests.put(
+                self.archive_url,
+                headers=self.headers,
+                data=source_content,
+                timeout=30,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            err = f"Failed to archive file in SharePoint: {exc}"
+            raise ProcessingError(err) from exc
+        self.verify_uploaded_file(expected_size=content_size, verify_type="archive")
+        self.delete_file()
