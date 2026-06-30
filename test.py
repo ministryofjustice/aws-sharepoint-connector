@@ -84,8 +84,8 @@ def scenario_1(
     s1_dest_files = sp_to_s3_engine.list_source_files()
 
     if all(
-        file
-        in [
+        file in s1_dest_files
+        for file in [
             "scenario_1/sample_sp_file_1.csv",
             "scenario_1/sample_sp_file_2.csv",
             "scenario_1/sample_sp_file_3.csv",
@@ -93,11 +93,10 @@ def scenario_1(
             "scenario_1/sample_sp_file_5.csv",
             "scenario_1/sample_sp_file_6.csv",
         ]
-        for file in s1_dest_files
     ):
         if all(
-            file
-            in [
+            file in s1_source_files
+            for file in [
                 "source/sample_s3_file_1.csv",
                 "source/sample_s3_file_2.csv",
                 "source/sample_s3_file_3.csv",
@@ -105,7 +104,6 @@ def scenario_1(
                 "source/sample_s3_file_5.csv",
                 "source/sample_s3_file_6.csv",
             ]
-            for file in s1_source_files
         ):
             print("Test passed: All files are present in SharePoint.")
         else:
