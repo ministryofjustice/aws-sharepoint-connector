@@ -365,7 +365,7 @@ def scenario_6(
             and all(
                 file in s6_source_files
                 for file in [
-                    "scenario_5/folder_4/sample_sp_file_3.csv",
+                    "scenario_5/folder_3/sample_sp_file_3.csv",
                 ]
             )
         ):
