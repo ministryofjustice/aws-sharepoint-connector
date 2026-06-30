@@ -29,7 +29,7 @@ def run_plans(
 ) -> None:
     """Run a list of file transfer plans using the given engine."""
     for plan in plans:
-        engine.run(
+        engine.copy(
             source=plan["source"],
             destination=plan["destination"],
             archive_folder=archive_folder,

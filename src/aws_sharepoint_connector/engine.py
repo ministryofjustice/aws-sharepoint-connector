@@ -41,7 +41,7 @@ class Engine(ABC):
         delete_source_file: Delete file from S3 after successful transfer.
         archive_source_file: Archive file in the S3 after successful transfer.
         validate_plan: Validate planned file movement is feasible before execution.
-        run: Transfer a single file from source to destination storage.
+        copy: Transfer a single file from source to destination storage.
 
     """
 
@@ -103,7 +103,7 @@ class Engine(ABC):
 
         """
 
-    def run(
+    def copy(
         self,
         source: str,
         destination: str,
@@ -178,7 +178,7 @@ class UploadToSharePointEngine(Engine):
         delete_source_file: Delete file from S3 after successful transfer.
         archive_source_file: Archive file in the S3 after successful transfer.
         validate_plan: Validate planned file movement is feasible before execution.
-        run: Transfer a single file from S3 to SharePoint.
+        copy: Transfer a single file from S3 to SharePoint.
 
     """
 
@@ -354,7 +354,7 @@ class UploadToS3Engine(Engine):
         delete_source_file: Delete file from SharePoint after successful transfer.
         archive_source_file: Archive file in SharePoint after successful transfer.
         validate_plan: Validate planned file movement is feasible before execution.
-        run: Transfer a single file from SharePoint to S3.
+        copy: Transfer a single file from SharePoint to S3.
 
     """
 

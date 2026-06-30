@@ -206,8 +206,8 @@ class TestEngines:
         mock_set_archive_key.assert_called_once_with("archive/reports/2026/file1.csv")
         mock_archive_object.assert_called_once_with(123)
 
-    def test_upload_sharepoint_run_archive_option(self, s3: boto3.client) -> None:
-        """Run calls archive_source_file when source_handling is archive."""
+    def test_upload_sharepoint_copy_archive_option(self, s3: boto3.client) -> None:
+        """Copy calls archive_source_file when source_handling is archive."""
         with (
             patch.object(
                 engine.UploadToSharePointEngine,
@@ -225,7 +225,7 @@ class TestEngines:
             ) as mock_validate,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.run(
+            upload_sp_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 archive_folder="archive/path",
@@ -243,17 +243,17 @@ class TestEngines:
             "reports/2026/file.csv", "archive/path", len(b"file content")
         )
 
-    def test_upload_sharepoint_run_archive_without_folder(
+    def test_upload_sharepoint_copy_archive_without_folder(
         self, s3: boto3.client
     ) -> None:
-        """Run raises when source_handling is archive but archive_folder is missing."""
+        """Copy raises when source_handling is archive but archive_folder is missing."""
         upload_sp_engine = self.setup_engine("sharepoint", s3)
 
         with pytest.raises(
             NoArchiveFolderGivenError,
             match="archive_folder must be provided",
         ):
-            upload_sp_engine.run(
+            upload_sp_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 source_handling="archive",
@@ -266,10 +266,10 @@ class TestEngines:
             (0, False),
         ],
     )
-    def test_upload_sharepoint_run_delete_option(
+    def test_upload_sharepoint_copy_delete_option(
         self, exp_delete_calls: int, *, delete: bool, s3: boto3.client
     ) -> None:
-        """Test that run executes the upload process without errors."""
+        """Test that copy executes the upload process without errors."""
         with (
             patch.object(
                 engine.UploadToSharePointEngine,
@@ -287,7 +287,7 @@ class TestEngines:
             ) as mock_validate,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine.run(
+            upload_sp_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 source_handling="delete" if delete else "none",
@@ -302,8 +302,8 @@ class TestEngines:
         )
         assert mock_delete_object.call_count == exp_delete_calls
 
-    def test_upload_sharepoint_run_no_delete_option(self, s3: boto3.client) -> None:
-        """Test that run executes the upload process without errors."""
+    def test_upload_sharepoint_copy_no_delete_option(self, s3: boto3.client) -> None:
+        """Test that copy executes the upload process without errors."""
         with (
             patch.object(
                 engine.UploadToSharePointEngine,
@@ -321,7 +321,7 @@ class TestEngines:
             ) as mock_validate,
         ):
             upload_sharepoint_engine = self.setup_engine("sharepoint", s3)
-            upload_sharepoint_engine.run(
+            upload_sharepoint_engine.copy(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 
@@ -481,8 +481,8 @@ class TestEngines:
         mock_set_archive_url.assert_called_once_with(archive_folder)
         mock_archive_file.assert_called_once_with(123)
 
-    def test_upload_s3_run_archive_option(self, s3: boto3.client) -> None:
-        """Run calls archive_source_file when source_handling is archive."""
+    def test_upload_s3_copy_archive_option(self, s3: boto3.client) -> None:
+        """Copy calls archive_source_file when source_handling is archive."""
         with (
             patch.object(
                 engine.UploadToS3Engine,
@@ -496,7 +496,7 @@ class TestEngines:
             patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.run(
+            upload_s3_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 archive_folder="archive/path",
@@ -514,15 +514,15 @@ class TestEngines:
             "reports/2026/file.csv", "archive/path", len(b"file content")
         )
 
-    def test_upload_s3_run_archive_without_folder(self, s3: boto3.client) -> None:
-        """Run raises when source_handling is archive but archive_folder is missing."""
+    def test_upload_s3_copy_archive_without_folder(self, s3: boto3.client) -> None:
+        """Copy raises when source_handling is archive but archive_folder is missing."""
         upload_s3_engine = self.setup_engine("s3", s3)
 
         with pytest.raises(
             NoArchiveFolderGivenError,
             match="archive_folder must be provided",
         ):
-            upload_s3_engine.run(
+            upload_s3_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 source_handling="archive",
@@ -535,10 +535,10 @@ class TestEngines:
             (0, False),
         ],
     )
-    def test_upload_s3_run_delete_option(
+    def test_upload_s3_copy_delete_option(
         self, exp_delete_calls: int, *, delete: bool, s3: boto3.client
     ) -> None:
-        """Test that run executes the upload process without errors."""
+        """Test that copy executes the upload process without errors."""
         with (
             patch.object(
                 engine.UploadToS3Engine,
@@ -552,7 +552,7 @@ class TestEngines:
             patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.run(
+            upload_s3_engine.copy(
                 source="reports/2026/file.csv",
                 destination="path/to/file.csv",
                 source_handling="delete" if delete else "none",
@@ -567,8 +567,8 @@ class TestEngines:
         )
         assert mock_delete_object.call_count == exp_delete_calls
 
-    def test_upload_s3_run_no_delete_option(self, s3: boto3.client) -> None:
-        """Test that run executes the upload process without errors."""
+    def test_upload_s3_copy_no_delete_option(self, s3: boto3.client) -> None:
+        """Test that copy executes the upload process without errors."""
         with (
             patch.object(
                 engine.UploadToS3Engine,
@@ -582,7 +582,7 @@ class TestEngines:
             patch.object(engine.UploadToS3Engine, "validate_plan") as mock_validate,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine.run(
+            upload_s3_engine.copy(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 
