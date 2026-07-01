@@ -118,6 +118,11 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
             [
                 utils.mock_check_object_response(
                     200,
+                    "reports",
+                    "folder",
+                ),
+                utils.mock_check_object_response(
+                    200,
                     "reports/2026",
                     "folder",
                 ),
