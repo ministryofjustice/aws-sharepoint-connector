@@ -14,8 +14,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-identity>=1.24.0",
-    "boto3>=1.42.90",
-    "pydantic-settings>=2.11.0",
+    "boto3>=1.43.36",
+    "pydantic-settings>=2.14.2",
     "pydantic>=2.12.3",
     "requests>=2.32.4",
 ]
@@ -26,7 +26,7 @@ Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
-    "ruff>=0.15.12",
+    "ruff>=0.15.19",
     "types-requests>=2.33.0.20260503",
 ]
 package = [
@@ -38,7 +38,7 @@ package = [
 test = [
     "moto>=5.2.0",
     "pandas>=3.0.2",
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-cov>=7.0.0",
     "typer>=0.26.7",
 ]
