@@ -236,9 +236,14 @@ class UploadToSharePointEngine(Engine):
         if folder and folder != ".":
             try:
                 self.sharepoint_connector.check_object_exists(folder, "folder")
+            except ObjectNotFoundError:
+                log.info(
+                    "SharePoint destination folder '%s' does not exist yet and "
+                    "will be created during upload.",
+                    folder,
+                )
             except (
                 IncorrectObjectTypeError,
-                ObjectNotFoundError,
                 ProcessingError,
             ) as exc:
                 errors.append(str(exc))
@@ -286,6 +291,9 @@ class UploadToSharePointEngine(Engine):
             content_size,
             destination,
         )
+        folder = str(Path(destination).parent)
+        if folder and folder != ".":
+            self.sharepoint_connector.ensure_folder_path_exists(folder)
         self.sharepoint_connector.update_with_file_path(destination)
         self.sharepoint_connector.set_upload_url()
         self.sharepoint_connector.upload_stream_in_chunks(

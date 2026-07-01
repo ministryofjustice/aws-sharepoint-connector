@@ -2,7 +2,7 @@
 
 import logging
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -15,6 +15,7 @@ from aws_sharepoint_connector.config import (
     SharePointLibrary,
 )
 from aws_sharepoint_connector.constants import (
+    ALREADY_EXISTS_CODE,
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
@@ -328,6 +329,89 @@ class SharePointConnector(BaseModel):
         if obj_type not in item:
             err = f"SharePoint path '{path}' exists but is not a {obj_type}"
             raise IncorrectObjectTypeError(err)
+
+    def create_folder(self, folder_path: str) -> None:
+        """Create a folder in the SharePoint library.
+
+        Args:
+            folder_path (str): Folder path relative to the library root.
+
+        Raises:
+            ProcessingError: If the folder cannot be created.
+
+        """
+        folder = PurePosixPath(folder_path)
+        folder_name = folder.name
+        parent_path = str(folder.parent)
+        if parent_path == ".":
+            parent_path = ""
+
+        if parent_path:
+            encoded_parent_path = quote(parent_path, safe="/")
+            create_url = (
+                f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
+                f"/root:/{encoded_parent_path}:/children"
+            )
+        else:
+            create_url = (
+                f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root/children"
+            )
+
+        create_body = {
+            "name": folder_name,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "fail",
+        }
+
+        try:
+            resp = request_with_retry(
+                "POST",
+                create_url,
+                headers=self.headers,
+                json=create_body,
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            err = f"Failed to create SharePoint folder '{folder_path}': {exc}"
+            raise ProcessingError(err) from exc
+
+        if resp.status_code == ALREADY_EXISTS_CODE:
+            log.info(
+                "SharePoint folder '%s' already exists during creation.", folder_path
+            )
+            return
+
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as exc:
+            err = f"Failed to create SharePoint folder '{folder_path}': {exc}"
+            raise ProcessingError(err) from exc
+
+        log.info("Created SharePoint folder '%s'.", folder_path)
+
+    def ensure_folder_path_exists(self, folder_path: str) -> None:
+        """Create any missing folders in the SharePoint path.
+
+        Args:
+            folder_path (str): Folder path relative to the sharepoint site.
+
+        Raises:
+            IncorrectObjectTypeError: If an existing path segment is not a folder.
+            ProcessingError: If a folder existence check or creation request fails.
+
+        """
+        normalized_path = str(PurePosixPath(folder_path))
+        if not normalized_path or normalized_path == ".":
+            return
+
+        current_parts: list[str] = []
+        for part in PurePosixPath(normalized_path).parts:
+            current_parts.append(part)
+            current_path = "/".join(current_parts)
+            try:
+                self.check_object_exists(current_path, "folder")
+            except ObjectNotFoundError:
+                self.create_folder(current_path)
 
     def fetch_file(self) -> bytes:
         """Fetch a file from SharePoint.

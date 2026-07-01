@@ -3,7 +3,7 @@
 import logging
 from io import BytesIO
 from typing import Literal
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 import requests
@@ -430,6 +430,58 @@ def test_check_object_exists_request_error(
         ),
     ):
         connector.check_object_exists(SP_FILE_PATH, object_type)
+
+
+def test_create_folder_posts_to_parent_children_endpoint() -> None:
+    """create_folder posts the expected payload to the parent folder endpoint."""
+    connector = make_connector()
+
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.post",
+        return_value=utils.build_response(status_code=201, json_body={}),
+    ) as mock_post:
+        connector.create_folder("reports/2026")
+
+    assert mock_post.call_count == 1
+    assert mock_post.call_args.args[0] == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports:/children"
+    )
+    assert mock_post.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+    assert mock_post.call_args.kwargs["json"] == {
+        "name": "2026",
+        "folder": {},
+        "@microsoft.graph.conflictBehavior": "fail",
+    }
+
+
+def test_ensure_folder_path_exists_creates_each_missing_segment() -> None:
+    """Ensure_folder_path_exists creates missing folders from the top down."""
+    connector = make_connector()
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "check_object_exists",
+            side_effect=[
+                ObjectNotFoundError("Folder not found in SharePoint: 'reports'"),
+                ObjectNotFoundError("Folder not found in SharePoint: 'reports/2026'"),
+            ],
+        ) as mock_check,
+        patch.object(SharePointConnector, "create_folder") as mock_create_folder,
+    ):
+        connector.ensure_folder_path_exists("reports/2026")
+
+    assert mock_check.call_args_list == [
+        call("reports", "folder"),
+        call("reports/2026", "folder"),
+    ]
+    assert mock_create_folder.call_args_list == [
+        call("reports"),
+        call("reports/2026"),
+    ]
 
 
 def test_fetch_file_success() -> None:
