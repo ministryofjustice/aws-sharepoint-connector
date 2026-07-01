@@ -26,6 +26,27 @@ from aws_sharepoint_connector.utils import setup_logger
 log = setup_logger()
 
 
+@dataclass(frozen=True, slots=True)
+class Result:
+    """Class to represent the result of a file transfer operation.
+
+    Attributes:
+        source (str): The source file path (S3 key or SharePoint path).
+        destination (str): The destination file path (SharePoint path or S3 key).
+        content_size (int): The size of the transferred content in bytes.
+        source_handling (Literal["archive", "delete", "none"]): How the source file
+            was handled after transfer.
+        status (str): 'success' to show copying was successful.
+
+    """
+
+    source: str
+    destination: str
+    content_size: int
+    source_handling: Literal["archive", "delete", "none"]
+    status: str
+
+
 @dataclass
 class Engine(ABC):
     """Abstract base class for different storage engines.
@@ -102,7 +123,7 @@ class Engine(ABC):
         archive_folder: str = "",
         *,
         source_handling: Literal["archive", "delete", "none"] = "none",
-    ) -> None:
+    ) -> Result:
         """Transfer a single file from source to destination storage."""
         self._validate_plan(source=source, destination=destination)
         content = self._download_file(source)
@@ -121,6 +142,14 @@ class Engine(ABC):
         if source_handling == "archive":
             self._archive_source_file(source, archive_folder, content_size)
 
+        return Result(
+            source=source,
+            destination=destination,
+            content_size=content_size,
+            source_handling=source_handling,
+            status="success",
+        )
+
     def copy(
         self,
         source: str,
@@ -128,7 +157,7 @@ class Engine(ABC):
         archive_folder: str = "",
         *,
         source_handling: Literal["archive", "delete", "none"] = "none",
-    ) -> None:
+    ) -> Result:
         """Transfer a single file from source to destination storage.
 
         Args:
@@ -141,6 +170,9 @@ class Engine(ABC):
                 SharePoint library as the source file.
             source_handling (Literal["archive", "delete", "none"]): How to handle the
                  source file after a successful transfer.
+
+        Returns:
+            Result: An object containing details of the transfer operation.
 
         Raises:
             ProcessingError: If any step of the transfer fails, including validation,
@@ -169,7 +201,7 @@ class Engine(ABC):
             source_handling,
         )
 
-        self._copy(
+        return self._copy(
             source=source,
             destination=destination,
             archive_folder=archive_folder,
