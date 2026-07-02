@@ -142,7 +142,7 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
         ),
         patch(
             "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
-        ),
+        ) as mock_sharepoint_gets,
         patch(
             "aws_sharepoint_connector.sharepoint.requests.post", side_effect=post_mocks
         ),
@@ -163,6 +163,9 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     assert len(put_calls) == total_chunks, (
         f"Expected {total_chunks} PUT calls, got {len(put_calls)}"
     )
+
+    get_call_count = mock_sharepoint_gets.call_count
+    assert get_call_count == 2 + (file_count * 2)
 
     uploaded_chunks = [call.kwargs["data"] for call in put_calls]
     offset = 0

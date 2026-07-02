@@ -9,6 +9,7 @@ from aws_sharepoint_connector import engine
 from aws_sharepoint_connector.config import SecretConfig
 from aws_sharepoint_connector.exceptions import (
     NoArchiveFolderGivenError,
+    ObjectNotFoundError,
     ProcessingError,
 )
 from aws_sharepoint_connector.s3 import S3Connector
@@ -179,6 +180,27 @@ class TestEngines:
         assert mock_upload_stream.call_args[0][0].getvalue() == b"Test content"
         assert mock_upload_stream.call_args[0][1] == len(b"Test content")
         mock_verify_upload.assert_called_once_with(len(b"Test content"), "destination")
+
+    def test_upload_sharepoint_validate_plan_allows_missing_destination_folder(
+        self, s3: boto3.client
+    ) -> None:
+        """validate_plan allows missing SharePoint folders that will be auto-created."""
+        upload_sp_engine = self.setup_engine("sharepoint", s3)
+
+        with (
+            patch.object(S3Connector, "check_bucket_exists"),
+            patch.object(S3Connector, "set_key"),
+            patch.object(S3Connector, "check_object_exists"),
+            patch.object(
+                SharePointConnector,
+                "check_object_exists",
+                side_effect=ObjectNotFoundError("Folder not found in SharePoint"),
+            ),
+            patch.object(SharePointConnector, "create_missing_folders"),
+        ):
+            upload_sp_engine.validate_plan(
+                source="reports/2026/file.csv", destination="path/to/file.csv"
+            )
 
     def test_upload_sharepoint_delete_source_file(self, s3: boto3.client) -> None:
         """Test that delete_source_file calls the correct S3 method."""

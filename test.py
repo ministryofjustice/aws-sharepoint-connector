@@ -1,6 +1,7 @@
 """Test file."""
 
 import os
+import uuid
 from typing import Literal
 
 import boto3
@@ -459,6 +460,63 @@ def scenario_7(
             print(f"Test failed: Unexpected error for invalid S3 bucket: {exc}")
 
 
+def scenario_8(
+    s3_to_sharepoint_engine: UploadToSharePointEngine, sp_to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 8: Write files to different sharepoint folders that do/don't exist."""
+    print("Starting Scenario 8...")
+    ran_str = str(uuid.uuid4())
+    scenario_8_plan = [
+        {
+            "source": "source/sample_s3_file_1.csv",
+            "destination": f"scenario_8_{ran_str}/sample_s3_file_1.csv",
+        },
+        {
+            "source": "source/sample_s3_file_2.csv",
+            "destination": f"scenario_8/{ran_str}/sample_s3_file_2.csv",
+        },
+        {
+            "source": "source/sample_s3_file_3.csv",
+            "destination": f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
+        },
+        {
+            "source": "source/sample_s3_file_4.csv",
+            "destination": f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+        },
+    ]
+
+    run_plans(scenario_8_plan, s3_to_sharepoint_engine, "archive")
+
+    s8_source_files = sp_to_s3_engine.list_source_files()
+    s8_dest_files = s3_to_sharepoint_engine.list_source_files()
+
+    if all(
+        file in s8_dest_files
+        for file in [
+            f"scenario_8_{ran_str}/sample_s3_file_1.csv",
+            f"scenario_8/{ran_str}/sample_s3_file_2.csv",
+            f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
+            f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+        ]
+    ):
+        if all(
+            file in s8_source_files
+            for file in [
+                "source/sample_s3_file_1.csv",
+                "source/sample_s3_file_2.csv",
+                "source/sample_s3_file_3.csv",
+                "source/sample_s3_file_4.csv",
+            ]
+        ):
+            print("Test passed: All files are present correctly in S3 and SharePoint.")
+        else:
+            print("Test failed: Some files were not archived correctly.")
+            print("Found:", s8_source_files)
+    else:
+        print("Test failed: Some files are missing in S3.")
+        print("Found:", s8_source_files)
+
+
 def main() -> None:
     """Run the test scenarios for transferring files between S3 and SharePoint."""
     ### Set up files and engines
@@ -484,6 +542,9 @@ def main() -> None:
 
     ### Scenario 7: Invalid plans
     scenario_7(s3_to_sharepoint_engine, sp_to_s3_engine)
+
+    ### Scenario 8: Sharepoint Folder creation
+    scenario_8(s3_to_sharepoint_engine, sp_to_s3_engine)
 
 
 if __name__ == "__main__":

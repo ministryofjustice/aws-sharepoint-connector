@@ -2,8 +2,9 @@
 
 import logging
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import Literal
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 import requests
@@ -430,6 +431,128 @@ def test_check_object_exists_request_error(
         ),
     ):
         connector.check_object_exists(SP_FILE_PATH, object_type)
+
+
+def test_create_folder_posts_to_parent_children_endpoint() -> None:
+    """create_folder posts the expected payload to the parent folder endpoint."""
+    connector = make_connector()
+
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.post",
+        return_value=utils.build_response(status_code=201, json_body={}),
+    ) as mock_post:
+        connector.create_folder(PurePosixPath("reports/2026"))
+
+    assert mock_post.call_count == 1
+    assert mock_post.call_args.args[0] == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/reports:/children"
+    )
+    assert mock_post.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+    assert mock_post.call_args.kwargs["json"] == {
+        "name": "2026",
+        "folder": {},
+        "@microsoft.graph.conflictBehavior": "fail",
+    }
+
+
+def test_create_folder_posts_to_root_children_endpoint_for_root_folder() -> None:
+    """create_folder uses root children endpoint for top-level folder paths."""
+    connector = make_connector()
+
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.post",
+        return_value=utils.build_response(status_code=201, json_body={}),
+    ) as mock_post:
+        connector.create_folder(PurePosixPath("reports"))
+
+    assert mock_post.call_args.args[0] == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root/children"
+    )
+
+
+def test_create_folder_request_error_raises_processing_error() -> None:
+    """create_folder wraps request failures in ProcessingError."""
+    connector = make_connector()
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.post",
+            side_effect=requests.RequestException("network error"),
+        ),
+        pytest.raises(
+            ProcessingError,
+            match="Failed to create SharePoint folder 'reports/2026'",
+        ),
+    ):
+        connector.create_folder(PurePosixPath("reports/2026"))
+
+
+def test_create_folder_already_exists_is_ignored() -> None:
+    """create_folder returns without raising when Graph reports already exists."""
+    connector = make_connector()
+
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.post",
+        return_value=utils.build_response(status_code=409, json_body={}),
+    ):
+        connector.create_folder(PurePosixPath("reports/2026"))
+
+
+def test_create_folder_http_error_raises_processing_error() -> None:
+    """create_folder wraps HTTP status failures in ProcessingError."""
+    connector = make_connector()
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.post",
+            return_value=utils.build_response(status_code=500, json_body={}),
+        ),
+        pytest.raises(
+            ProcessingError,
+            match="Failed to create SharePoint folder 'reports/2026'",
+        ),
+    ):
+        connector.create_folder(PurePosixPath("reports/2026"))
+
+
+def test_create_missing_folders_creates_each_missing_segment() -> None:
+    """create_missing_folders creates missing folders from the top down."""
+    connector = make_connector()
+
+    with (
+        patch.object(
+            SharePointConnector,
+            "check_object_exists",
+            side_effect=[
+                ObjectNotFoundError("Folder not found in SharePoint: 'reports'"),
+                ObjectNotFoundError("Folder not found in SharePoint: 'reports/2026'"),
+            ],
+        ) as mock_check,
+        patch.object(SharePointConnector, "create_folder") as mock_create_folder,
+    ):
+        connector.create_missing_folders("reports/2026")
+
+    assert mock_check.call_args_list == [
+        call("reports", "folder"),
+        call("reports/2026", "folder"),
+    ]
+    assert mock_create_folder.call_args_list == [
+        call(PurePosixPath("reports")),
+        call(PurePosixPath("reports/2026")),
+    ]
+
+
+def test_create_missing_folders_returns_for_current_directory() -> None:
+    """create_missing_folders returns immediately for current directory marker."""
+    connector = make_connector()
+
+    with patch.object(SharePointConnector, "check_object_exists") as mock_check:
+        connector.create_missing_folders(".")
+
+    mock_check.assert_not_called()
 
 
 def test_fetch_file_success() -> None:
