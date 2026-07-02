@@ -12,7 +12,7 @@
 
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
-Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint` (S3 -> SharePoint). Instantiate an engine via `create_engine` and call `run` for each file you want to transfer.
+Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint` (S3 -> SharePoint). Instantiate an engine via `create_engine` and call `copy` for each file you want to transfer.
 
 ## Table of contents
 
@@ -35,13 +35,14 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 
 1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
-3. For each file, call `engine.run(source, destination, archive_folder="", source_handling="none")`:
-    - Calls `engine.validate_plan` to validate the transfer before any file movement begins.
+3. For each file, call `engine.copy(source, destination, archive_folder="", source_handling="none")`:
+    - Calls `engine._validate_plan` to validate the transfer before any file movement begins.
     - Download from the source system (SharePoint or S3).
     - Upload to the destination system (S3 or SharePoint).
     - Verify transfer was successful by comparing byte size.
     - Optionally delete or archive the source file.
-4. Handle errors per file in your calling code.
+4. Returns a `Result` object confirming the copying was successful
+5. Handle errors per file in your calling code.
 
 ### Transfer Modes
 
@@ -50,13 +51,13 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 
 ### Core Components
 
-- `src/connector/main.py`: Public API — `create_engine()`
-- `src/connector/config.py`: Pydantic models for validated configuration.
-- `src/connector/engine.py`: Abstract transfer logic.
-- `src/connector/sharepoint.py`: SharePoint connector.
-- `src/connector/s3.py`: AWS S3 connector.
-- `src/connector/auth.py`: Azure authentication and Graph utilities.
-- `src/connector/utils.py`: Logger and HTTP retry logic.
+- `src/aws_sharepoint_connector/main.py`: Public API — `create_engine()`
+- `src/aws_sharepoint_connector/config.py`: Pydantic models for validated configuration.
+- `src/aws_sharepoint_connector/engine.py`: Abstract transfer logic.
+- `src/aws_sharepoint_connector/sharepoint.py`: SharePoint connector.
+- `src/aws_sharepoint_connector/s3.py`: AWS S3 connector.
+- `src/aws_sharepoint_connector/auth.py`: Azure authentication and Graph utilities.
+- `src/aws_sharepoint_connector/utils.py`: Logger and HTTP retry logic.
 
 ## Configuration
 
@@ -87,9 +88,9 @@ Passed directly to `create_engine()` from your calling code
 | `sp_library` | string | SharePoint document library name (e.g. `Documents`) |
 | `s3_bucket` | string | S3 bucket name (without `s3://` prefix) |
 
-Passed to the engine's `run` method to identify a specific file to move
+Passed to the engine's `copy` method to identify a specific file to move
 
-**`run(source, destination, archive_folder="", source_handling="none")`**
+**`copy(source, destination, archive_folder="", source_handling="none")`**
 
 | Key | Type | Description |
 | --- | --- | --- |
@@ -119,7 +120,7 @@ plans = [
     }
 ]
 for plan in plans:
-    engine.run(plan["source"], plan["destination"])
+    result = engine.copy(plan["source"], plan["destination"])
 ```
 
 ### Example: S3 → SharePoint (single file)
@@ -140,7 +141,7 @@ plans = [
     }
 ]
 for plan in plans:
-    engine.run(plan["source"], plan["destination"])
+    result = engine.copy(plan["source"], plan["destination"])
 ```
 
 ### Example: archive source after successful transfer
@@ -153,18 +154,13 @@ engine = create_engine(
     s3_bucket="my-bucket",
 )
 
-engine.run(
+result = engine.copy(
     source="reports/2026/daily_report.csv",
     destination="processed/daily_report.csv",
     archive_folder="archive/reports/2026",
     source_handling="archive",
 )
 ```
-
-Archive behavior by mode:
-
-- `write_to_sharepoint`: archives the source S3 object by copying it to `archive_folder/<filename>` and deleting the original key.
-- `write_to_s3`: archives the source SharePoint file by uploading it to `archive_folder/<filename>` and deleting the original file.
 
 ## Prerequisites
 
@@ -254,7 +250,7 @@ plans = [
 ]
 
 for plan in plans:
-    engine.run(plan["source"], plan["destination"])
+    result = engine.copy(plan["source"], plan["destination"])
 ```
 
 You can optionally use the `list_source_files` methods on the engines to obtain a list
@@ -287,7 +283,7 @@ All Graph API and HTTP calls use `request_with_retry()`:
 
 ### Batch Processing Behavior
 
-Batch iteration is handled by the calling code. The engine processes one file per `engine.run()` call and raises `ProcessingError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
+Batch iteration is handled by the calling code. The engine processes one file per `engine.copy()` call and raises `ProcessingError` on failure. It is the caller's responsibility to decide whether to abort or continue processing remaining files.
 
 ## How to modify or extend
 

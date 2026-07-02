@@ -1,4 +1,4 @@
-"""E2E tests for create_engine() + engine.run(): write to S3 and SharePoint."""
+"""E2E tests for create_engine() + engine.copy(): write to S3 and SharePoint."""
 
 from math import ceil
 from unittest.mock import patch
@@ -72,7 +72,7 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
     ):
         eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
         for plan in plans_dicts:
-            eng.run(plan["source"], plan["destination"])
+            eng.copy(plan["source"], plan["destination"])
 
     for _, (plan, expected_payload) in enumerate(
         zip(plans_dicts, expected_payloads, strict=True)
@@ -157,7 +157,7 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     ):
         eng = create_engine("write_to_sharepoint", sp_site, sp_library, s3_bucket)
         for plan in plans_dicts:
-            eng.run(plan["source"], plan["destination"])
+            eng.copy(plan["source"], plan["destination"])
 
     put_calls = mock_session_put.call_args_list
     assert len(put_calls) == total_chunks, (

@@ -30,7 +30,7 @@ def run_plans(
 ) -> None:
     """Run a list of file transfer plans using the given engine."""
     for plan in plans:
-        engine.run(
+        engine.copy(
             source=plan["source"],
             destination=plan["destination"],
             archive_folder=archive_folder,
@@ -366,7 +366,7 @@ def scenario_6(
             and all(
                 file in s6_source_files
                 for file in [
-                    "scenario_5/folder_4/sample_sp_file_3.csv",
+                    "scenario_5/folder_3/sample_sp_file_3.csv",
                 ]
             )
         ):

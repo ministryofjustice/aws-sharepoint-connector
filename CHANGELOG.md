@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-07-01
+
+### Changed
+
+- Renamed the public transfer API from `engine.run(...)` to `engine.copy(...)`.
+- Refactored engine internals to private workflow methods (`_validate_plan`, `_download_file`, `_upload_file`, `_archive_source_file`, `_delete_source_file`, `_copy`) while preserving transfer semantics.
+- Moved `types-requests` from runtime dependencies to dev dependencies.
+- Updated `README.md` and tests to align with the `copy(...)` API rename.
+
+## [1.4.0] - 2026-06-30
 
 ### Added
 
-- Added configurable post-transfer source handling via `Engine.run(..., source_handling=...)`:
+- Added configurable post-transfer source handling via `engine.run(..., source_handling=...)`:
   - `none` (default): keep source in place
   - `delete`: delete source after successful transfer
   - `archive`: archive source after successful transfer (requires `archive_folder`)
@@ -20,8 +29,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Updated `README.md` and API documentation to match the current runtime API and archive behavior.
-- Corrected method/class documentation to align with `validate_plan(...)` and current `run(...)` parameters.
+- Updated `S3Connector` key management and verification flow to support destination/archive verification and source archiving.
+- Updated `SharePointConnector` verification and archive handling with dedicated archive URL support.
+- Updated `README.md` and API documentation to match runtime archive behavior.
+- Expanded unit and integration tests for archive workflows and error handling.
+
+### Fixed
+
+- Corrected S3 verification semantics to verify destination/archive objects rather than source files during archive workflows.
+- Corrected key handling in S3 archive code paths to avoid source/destination key confusion.
+
+## [1.3.1] - 2026-06-29
+
+### Changed
+
+- Improved release/versioning script quality with typing and formatting updates.
+- Added additional script-validation tests and coverage for release tooling.
+
+### Fixed
+
+- Allowed an initial `404` response during package-release copy initialisation to prevent false release failures.
+
+## [1.3.0] - 2026-06-29
+
+### Added
+
+- Added semantic-release based versioning and release automation for package publishing.
+
+### Changed
+
+- Refined release workflow and versioning script logic to avoid direct pushes to `main`.
+- Updated release-tool dependencies and packaging configuration for automation stability.
+
+### Fixed
+
+- Fixed multiple release-script path and file-handling issues, including Linux output parsing.
+- Fixed release automation cleanup steps (including changelog and generated release artifacts handling).
 
 ## [1.2.3] - 2026-06-22
 
@@ -150,4 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.2.3]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.0...v1.2.1
-[Unreleased]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.3...HEAD
+[1.3.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.3...v1.3.0
+[1.3.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.0...v1.3.1
+[1.4.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.1...v1.4.0
+[1.5.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.4.0...v1.5.0
+[Unreleased]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.5.0...HEAD

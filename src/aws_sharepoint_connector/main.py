@@ -35,17 +35,17 @@ def create_engine(
     Make use of the 'list_source_files' method to identify what files are located in the
     source and amend according to your needs.
 
-    Iterate over each file to be transferred and call the 'run' method with the
+    Iterate over each file to be transferred and call the 'copy' method with the
     source and destination paths to perform the transfer. An s3 source/destination is
     the full s3 key (excluding the bucket name) and a SharePoint source/destination is
     the full path to the file (excluding the site and library).
 
-    The 'run' method validates that the configuration is correct (expected bucket,
+    The 'copy' method validates that the configuration is correct (expected bucket,
     folders and files exist). Then downloads the file from the source and uploads it to
     the destination.
 
     Optionally handle source files after successful transfer by setting
-    ``source_handling`` in ``run`` to ``"none"`` (default), ``"delete"``, or
+    ``source_handling`` in ``copy`` to ``"none"`` (default), ``"delete"``, or
     ``"archive"``. ``archive`` also requires ``archive_folder``.
 
     Args:
@@ -60,7 +60,7 @@ def create_engine(
 
     Returns:
         UploadToSharePointEngine | UploadToS3Engine:
-            A configured engine instance ready to run file transfers.
+            A configured engine instance ready to copy file transfers.
 
     Raises:
         ValueError: If ``mode`` is not one of the valid transfer directions.
@@ -73,7 +73,7 @@ def create_engine(
         ...     sp_library="Documents",
         ...     s3_bucket="my-destination-bucket",
         ... )
-        >>> eng.run(
+        >>> eng.copy(
         ...     source="reports/2026/file1.csv",
         ...     destination="path/to/file1.csv",
         ...     archive_folder="archive/reports/2026",
