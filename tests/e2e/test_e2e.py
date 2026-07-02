@@ -175,7 +175,7 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     )
 
     get_call_count = mock_sharepoint_gets.call_count
-    assert get_call_count == 4
+    assert get_call_count == 2 + (file_count * 4)
 
     uploaded_chunks = [call.kwargs["data"] for call in put_calls]
     offset = 0
