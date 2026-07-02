@@ -236,22 +236,28 @@ class UploadToSharePointEngine(Engine):
         if folder and folder != ".":
             try:
                 self.sharepoint_connector.check_object_exists(folder, "folder")
+                folder_exists = True
             except ObjectNotFoundError:
                 log.info(
                     "SharePoint destination folder '%s' does not exist yet and "
                     "will be created during upload.",
                     folder,
                 )
+                folder_exists = False
             except (
                 IncorrectObjectTypeError,
                 ProcessingError,
             ) as exc:
                 errors.append(str(exc))
+                folder_exists = False
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
             err = f"Validation failed with {len(errors)} error(s):\n {all_errors}"
             raise ProcessingError(err)
+
+        if not folder_exists:
+            self.sharepoint_connector.create_missing_folders(folder_path=folder)
 
         log.info("Validation complete for S3->SharePoint transfer plan.")
 
@@ -291,9 +297,6 @@ class UploadToSharePointEngine(Engine):
             content_size,
             destination,
         )
-        folder = str(Path(destination).parent)
-        if folder and folder != ".":
-            self.sharepoint_connector.ensure_folder_path_exists(folder)
         self.sharepoint_connector.update_with_file_path(destination)
         self.sharepoint_connector.set_upload_url()
         self.sharepoint_connector.upload_stream_in_chunks(

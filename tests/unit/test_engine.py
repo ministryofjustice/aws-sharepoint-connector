@@ -159,9 +159,6 @@ class TestEngines:
         """Test that upload_file calls the correct SharePoint methods."""
         with (
             patch.object(
-                SharePointConnector, "ensure_folder_path_exists"
-            ) as mock_ensure_folder_path_exists,
-            patch.object(
                 SharePointConnector, "update_with_file_path"
             ) as mock_update_path,
             patch.object(SharePointConnector, "set_upload_url") as mock_set_upload_url,
@@ -177,7 +174,6 @@ class TestEngines:
                 b"Test content", SP_FILE_PATH, len(b"Test content")
             )
 
-        mock_ensure_folder_path_exists.assert_called_once_with("reports/2026")
         mock_update_path.assert_called_once_with(SP_FILE_PATH)
         mock_set_upload_url.assert_called_once_with()
         assert mock_upload_stream.call_count == 1
@@ -200,6 +196,7 @@ class TestEngines:
                 "check_object_exists",
                 side_effect=ObjectNotFoundError("Folder not found in SharePoint"),
             ),
+            patch.object(SharePointConnector, "create_missing_folders"),
         ):
             upload_sp_engine.validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"

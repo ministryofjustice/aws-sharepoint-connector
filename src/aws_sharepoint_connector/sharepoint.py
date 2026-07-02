@@ -330,7 +330,7 @@ class SharePointConnector(BaseModel):
             err = f"SharePoint path '{path}' exists but is not a {obj_type}"
             raise IncorrectObjectTypeError(err)
 
-    def create_folder(self, folder_path: str) -> None:
+    def create_folder(self, folder_path: PurePosixPath) -> None:
         """Create a folder in the SharePoint library.
 
         Args:
@@ -340,13 +340,11 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the folder cannot be created.
 
         """
-        folder = PurePosixPath(folder_path)
-        folder_name = folder.name
-        parent_path = str(folder.parent)
+        parent_path = str(folder_path.parent)
         if parent_path == ".":
             parent_path = ""
 
-        if parent_path:
+        if parent_path != "":
             encoded_parent_path = quote(parent_path, safe="/")
             create_url = (
                 f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
@@ -358,7 +356,7 @@ class SharePointConnector(BaseModel):
             )
 
         create_body = {
-            "name": folder_name,
+            "name": folder_path.name,
             "folder": {},
             "@microsoft.graph.conflictBehavior": "fail",
         }
@@ -389,7 +387,7 @@ class SharePointConnector(BaseModel):
 
         log.info("Created SharePoint folder '%s'.", folder_path)
 
-    def ensure_folder_path_exists(self, folder_path: str) -> None:
+    def create_missing_folders(self, folder_path: str) -> None:
         """Create any missing folders in the SharePoint path.
 
         Args:
@@ -400,16 +398,14 @@ class SharePointConnector(BaseModel):
             ProcessingError: If a folder existence check or creation request fails.
 
         """
-        normalized_path = str(PurePosixPath(folder_path))
-        if not normalized_path or normalized_path == ".":
+        normalized_path = PurePosixPath(folder_path)
+        if not normalized_path or str(normalized_path) == ".":
             return
-
-        current_parts: list[str] = []
-        for part in PurePosixPath(normalized_path).parts:
-            current_parts.append(part)
-            current_path = "/".join(current_parts)
+        current_path = PurePosixPath(".")
+        for part in normalized_path.parts:
+            current_path = current_path / str(part)
             try:
-                self.check_object_exists(current_path, "folder")
+                self.check_object_exists(str(current_path), "folder")
             except ObjectNotFoundError:
                 self.create_folder(current_path)
 
@@ -483,6 +479,7 @@ class SharePointConnector(BaseModel):
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
         item = resp.json()
+        print(item)
         if "file" not in item or item.get("size") != expected_size:
             err = (
                 f"Verification failed: file '{expected_name}' not found with size "
