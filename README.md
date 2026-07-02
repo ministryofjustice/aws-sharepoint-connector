@@ -46,6 +46,7 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 ### Transfer Modes
 
 - **`write_to_s3`**: Download from SharePoint → Upload to S3
+blah blah blah
 - **`write_to_sharepoint`**: Download from S3 → Upload to SharePoint
 
 ### Core Components
