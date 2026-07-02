@@ -479,7 +479,6 @@ class SharePointConnector(BaseModel):
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
         item = resp.json()
-        print(item)
         if "file" not in item or item.get("size") != expected_size:
             err = (
                 f"Verification failed: file '{expected_name}' not found with size "

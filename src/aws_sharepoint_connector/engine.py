@@ -249,7 +249,6 @@ class UploadToSharePointEngine(Engine):
                 ProcessingError,
             ) as exc:
                 errors.append(str(exc))
-                folder_exists = False
 
         if errors:
             all_errors = "\n".join(f"  - {e}" for e in errors)
