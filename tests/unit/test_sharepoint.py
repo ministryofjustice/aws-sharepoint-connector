@@ -13,6 +13,7 @@ from aws_sharepoint_connector.config import SecretConfig
 from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
+    NoFileSizeError,
     NoLibraryError,
     NoSiteError,
     ObjectNotFoundError,
@@ -701,8 +702,9 @@ def test_verify_uploaded_size_mismatch() -> None:
         connector.verify_uploaded_file(expected_size=12, verify_type="destination")
 
 
-def test_verify_uploaded_size_mismatch_tolerance() -> None:
-    """Test verify_uploaded_file passes within tolerance if size does not match."""
+# json_body with no 'size' key
+def test_verify_uploaded_size_msg_mismatch_tolerance() -> None:
+    """Test verify_uploaded_file passes tolerance if size does not match for msg."""
     connector = make_connector()
 
     connector.update_with_file_path(SP_FILE_PATH_MSG)
@@ -717,6 +719,80 @@ def test_verify_uploaded_size_mismatch_tolerance() -> None:
         ),
     ):
         connector.verify_uploaded_file(expected_size=988, verify_type="destination")
+
+
+def test_verify_uploaded_size_non_msg_mismatch_tolerance() -> None:
+    """Test verify_uploaded_file fails within tolerance if size does not match."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.build_response(
+                status_code=200,
+                json_body={"name": SP_FILE_PATH, "size": 999, "file": {}},
+            ),
+        ),
+        pytest.raises(FileSizeMismatchError, match="Verification failed"),
+    ):
+        connector.verify_uploaded_file(expected_size=988, verify_type="destination")
+
+
+def test_verify_uploaded_size_msg_exact_match() -> None:
+    """Test verify_uploaded_file fails within tolerance if size does not match."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH_MSG)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.build_response(
+                status_code=200,
+                json_body={"name": SP_FILE_PATH_MSG, "size": 999, "file": {}},
+            ),
+        ),
+    ):
+        connector.verify_uploaded_file(expected_size=999, verify_type="destination")
+
+
+def test_verify_uploaded_size_match() -> None:
+    """Test verify_uploaded_file passes if exact match."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.build_response(
+                status_code=200,
+                json_body={"name": SP_FILE_PATH_MSG, "size": 999, "file": {}},
+            ),
+        ),
+    ):
+        connector.verify_uploaded_file(expected_size=999, verify_type="destination")
+
+
+def test_verify_no_size() -> None:
+    """Test verify_uploaded_file fails if no size."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.build_response(
+                status_code=200,
+                json_body={"name": SP_FILE_PATH_MSG, "file": {}},
+            ),
+        ),
+        pytest.raises(NoFileSizeError, match="Item has no file size"),
+    ):
+        connector.verify_uploaded_file(expected_size=999, verify_type="destination")
 
 
 def test_verify_uploaded_file_request_error() -> None:

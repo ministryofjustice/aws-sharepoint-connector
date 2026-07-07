@@ -28,6 +28,7 @@ from aws_sharepoint_connector.constants import (
 from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
+    NoFileSizeError,
     NoLibraryError,
     NoSiteError,
     ObjectNotFoundError,
@@ -486,11 +487,16 @@ not found in SharePoint."
         item = resp.json()
 
         actual_size = item.get("size")
-        size_verification = (
-            abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
-            if file_type in FILE_SIZE_TOLERANCE
-            else actual_size != expected_size
-        )
+
+        if actual_size:
+            size_verification = (
+                abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
+                if file_type in FILE_SIZE_TOLERANCE
+                else actual_size != expected_size
+            )
+        else:
+            msg = "Item has no file size."
+            raise NoFileSizeError(msg)
 
         if "file" not in item or size_verification:
             err = (
