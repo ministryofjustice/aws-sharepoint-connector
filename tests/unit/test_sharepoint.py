@@ -24,6 +24,7 @@ from tests import test_utils as utils
 SP_SITE = utils.SP_SITE  # "analytics-site"
 SP_LIBRARY = utils.SP_LIBRARY  # "Documents"
 SP_FILE_PATH = utils.SP_FILE_PATH  # "reports/2026/file1.csv"
+SP_FILE_PATH_MSG = utils.SP_FILE_PATH_MSG  # "reports/2026/file1.msg"
 SP_FILE_NAME = utils.SP_FILE_NAME  # "file1.csv"
 SP_FILE_PATH_NO_DIR = "file6.csv"
 
@@ -698,6 +699,24 @@ def test_verify_uploaded_size_mismatch() -> None:
         pytest.raises(FileSizeMismatchError, match="Verification failed"),
     ):
         connector.verify_uploaded_file(expected_size=12, verify_type="destination")
+
+
+def test_verify_uploaded_size_mismatch_tolerance() -> None:
+    """Test verify_uploaded_file passes within tolerance if size does not match."""
+    connector = make_connector()
+
+    connector.update_with_file_path(SP_FILE_PATH_MSG)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.build_response(
+                status_code=200,
+                json_body={"name": SP_FILE_PATH_MSG, "size": 999, "file": {}},
+            ),
+        ),
+    ):
+        connector.verify_uploaded_file(expected_size=988, verify_type="destination")
 
 
 def test_verify_uploaded_file_request_error() -> None:

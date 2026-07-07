@@ -462,7 +462,7 @@ class SharePointConnector(BaseModel):
         file_path = PurePosixPath(self.file_path)
         expected_name = file_path.name
 
-        file_type = file_path.suffix
+        file_type = file_path.suffix.lstrip(".")
 
         if verify_type == "destination":
             verify_url = f"{self.base_url}?$select=name,size,file"
@@ -485,10 +485,11 @@ not found in SharePoint."
         resp.raise_for_status()
         item = resp.json()
 
+        actual_size = item.get("size")
         size_verification = (
-            abs(item.get("size") - expected_name) < FILE_SIZE_TOLERANCE[file_type]
+            abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
             if file_type in FILE_SIZE_TOLERANCE
-            else item.get("size") != expected_size
+            else actual_size != expected_size
         )
 
         if "file" not in item or size_verification:

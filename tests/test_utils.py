@@ -15,6 +15,7 @@ from aws_sharepoint_connector.config import S3Bucket, SharePointLibrary
 SP_SITE = "analytics-site"
 SP_LIBRARY = "Documents"
 SP_FILE_PATH = "reports/2026/file1.csv"
+SP_FILE_PATH_MSG = "reports/2026/file1.msg"
 SP_FILE_NAME = "file1.csv"
 S3_BUCKET = "my-source-bucket"
 S3_KEY = "path/to/file1.csv"
