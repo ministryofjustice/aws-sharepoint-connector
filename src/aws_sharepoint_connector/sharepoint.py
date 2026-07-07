@@ -19,6 +19,7 @@ from aws_sharepoint_connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
+    FILE_SIZE_TOLERANCE,
     MAX_CHUNK_RETRIES,
     SERVER_ERROR_CODE,
     SHAREPOINT_DOMAIN,
@@ -442,15 +443,12 @@ class SharePointConnector(BaseModel):
         self,
         expected_size: int,
         verify_type: Literal["destination", "archive"],
-        *,
-        skip: bool = False,
     ) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
 
         Args:
             expected_size (int): Expected size in bytes for the uploaded file.
             verify_type (Literal["destination", "archive"]): Object being verified.
-            skip (bool): Skip verification
 
         Returns:
             None
@@ -461,42 +459,49 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the verification request fails.
 
         """
-        expected_name = Path(self.file_path).name
+        file_path = PurePosixPath(self.file_path)
+        expected_name = file_path.name
 
-        if not skip:
-            if verify_type == "destination":
-                verify_url = f"{self.base_url}?$select=name,size,file"
-            else:
-                archive_item_url = self.archive_url.removesuffix("/content")
-                verify_url = f"{archive_item_url}?$select=name,size,file"
+        file_type = file_path.suffix
 
-            try:
-                resp = request_with_retry(
-                    "GET", verify_url, headers=self.headers, timeout=30
-                )
-            except requests.RequestException as exc:
-                err = f"Failed to verify uploaded file: {exc}"
-                raise ProcessingError(err) from exc
-
-            if resp.status_code == DOES_NOT_EXIST_CODE:
-                err = f"Verification failed: file '{expected_name}'\
- not found in SharePoint."
-                raise ObjectNotFoundError(err)
-            resp.raise_for_status()
-            item = resp.json()
-            if "file" not in item or item.get("size") != expected_size:
-                err = (
-                    f"Verification failed: file '{expected_name}' not found with size "
-                    f"{expected_size} bytes."
-                )
-                raise FileSizeMismatchError(err)
-            log.info(
-                "Verified SharePoint upload for '%s' (%s bytes).",
-                expected_name,
-                expected_size,
-            )
+        if verify_type == "destination":
+            verify_url = f"{self.base_url}?$select=name,size,file"
         else:
-            log.info("Skipping file verification for %s", expected_name)
+            archive_item_url = self.archive_url.removesuffix("/content")
+            verify_url = f"{archive_item_url}?$select=name,size,file"
+
+        try:
+            resp = request_with_retry(
+                "GET", verify_url, headers=self.headers, timeout=30
+            )
+        except requests.RequestException as exc:
+            err = f"Failed to verify uploaded file: {exc}"
+            raise ProcessingError(err) from exc
+
+        if resp.status_code == DOES_NOT_EXIST_CODE:
+            err = f"Verification failed: file '{expected_name}'\
+not found in SharePoint."
+            raise ObjectNotFoundError(err)
+        resp.raise_for_status()
+        item = resp.json()
+
+        size_verification = (
+            abs(item.get("size") - expected_name) < FILE_SIZE_TOLERANCE[file_type]
+            if file_type in FILE_SIZE_TOLERANCE
+            else item.get("size") != expected_size
+        )
+
+        if "file" not in item or size_verification:
+            err = (
+                f"Verification failed: file '{expected_name}' not found with size "
+                f"{expected_size} bytes."
+            )
+            raise FileSizeMismatchError(err)
+        log.info(
+            "Verified SharePoint upload for '%s' (%s bytes).",
+            expected_name,
+            expected_size,
+        )
 
     def get_next_start(self, session: requests.Session) -> int:
         """Get the next starting byte position for uploading a chunk.
@@ -686,7 +691,6 @@ class SharePointConnector(BaseModel):
 
         """
         source_content = self.fetch_file()
-        is_msg_file = bool(self.archive_url.endswith(".msg"))
 
         try:
             resp = requests.put(
@@ -699,7 +703,5 @@ class SharePointConnector(BaseModel):
         except requests.RequestException as exc:
             err = f"Failed to archive file in SharePoint: {exc}"
             raise ProcessingError(err) from exc
-        self.verify_uploaded_file(
-            expected_size=content_size, verify_type="archive", skip=is_msg_file
-        )
+        self.verify_uploaded_file(expected_size=content_size, verify_type="archive")
         self.delete_file()

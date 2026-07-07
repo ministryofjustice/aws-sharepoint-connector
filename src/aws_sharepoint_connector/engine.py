@@ -333,7 +333,6 @@ class UploadToSharePointEngine(Engine):
             ProcessingError: If the SharePoint upload or verification fails.
 
         """
-        skip = bool(destination.endswith(".msg"))
         log.info(
             "Uploading %s bytes to SharePoint destination '%s'.",
             content_size,
@@ -345,7 +344,8 @@ class UploadToSharePointEngine(Engine):
             BytesIO(content), content_size
         )
         self.sharepoint_connector.verify_uploaded_file(
-            content_size, "destination", skip=skip
+            content_size,
+            "destination",
         )
 
     def _archive_source_file(
