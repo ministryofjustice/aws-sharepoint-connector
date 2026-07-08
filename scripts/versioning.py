@@ -70,4 +70,4 @@ def check_test_version_exists(version: str | None = None, url: str = test_url) -
 
 
 if __name__ == "__main__":
-    app()
+    app()  # pragma: no cover

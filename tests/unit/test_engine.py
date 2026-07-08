@@ -230,7 +230,7 @@ class TestEngines:
             ),
             patch.object(SharePointConnector, "create_missing_folders"),
         ):
-            upload_sp_engine.validate_plan(
+            upload_sp_engine._validate_plan(
                 source="reports/2026/file.csv", destination="path/to/file.csv"
             )
 

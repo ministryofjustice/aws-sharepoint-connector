@@ -31,3 +31,7 @@ class ObjectNotFoundError(Exception):
 
 class IncorrectObjectTypeError(Exception):
     """Raised when the object type is not as expected (e.g., file vs folder)."""
+
+
+class NoFileSizeError(Exception):
+    """Raised when the object does not have a file type in the expected place."""

@@ -19,6 +19,7 @@ from aws_sharepoint_connector.constants import (
     BAD_REQUEST_CODE,
     CHUNK_SIZE,
     DOES_NOT_EXIST_CODE,
+    FILE_SIZE_TOLERANCE,
     MAX_CHUNK_RETRIES,
     SERVER_ERROR_CODE,
     SHAREPOINT_DOMAIN,
@@ -27,6 +28,7 @@ from aws_sharepoint_connector.constants import (
 from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
+    NoFileSizeError,
     NoLibraryError,
     NoSiteError,
     ObjectNotFoundError,
@@ -439,7 +441,9 @@ class SharePointConnector(BaseModel):
         return file_resp.content
 
     def verify_uploaded_file(
-        self, expected_size: int, verify_type: Literal["destination", "archive"]
+        self,
+        expected_size: int,
+        verify_type: Literal["destination", "archive"],
     ) -> None:
         """Verify that the file was uploaded successfully to SharePoint.
 
@@ -456,7 +460,10 @@ class SharePointConnector(BaseModel):
             ProcessingError: If the verification request fails.
 
         """
-        expected_name = Path(self.file_path).name
+        file_path = PurePosixPath(self.file_path)
+        expected_name = file_path.name
+
+        file_type = file_path.suffix.lstrip(".")
 
         if verify_type == "destination":
             verify_url = f"{self.base_url}?$select=name,size,file"
@@ -473,13 +480,25 @@ class SharePointConnector(BaseModel):
             raise ProcessingError(err) from exc
 
         if resp.status_code == DOES_NOT_EXIST_CODE:
-            err = (
-                f"Verification failed: file '{expected_name}' not found in SharePoint."
-            )
+            err = f"Verification failed: file '{expected_name}'\
+not found in SharePoint."
             raise ObjectNotFoundError(err)
         resp.raise_for_status()
         item = resp.json()
-        if "file" not in item or item.get("size") != expected_size:
+
+        actual_size = item.get("size")
+
+        if actual_size:
+            size_verification = (
+                abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
+                if file_type in FILE_SIZE_TOLERANCE
+                else actual_size != expected_size
+            )
+        else:
+            msg = "Item has no file size."
+            raise NoFileSizeError(msg)
+
+        if "file" not in item or size_verification:
             err = (
                 f"Verification failed: file '{expected_name}' not found with size "
                 f"{expected_size} bytes."

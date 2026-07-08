@@ -7,7 +7,11 @@ from urllib.error import HTTPError
 import pytest
 from typer import BadParameter
 
-from scripts.versioning import check_test_version_exists, validate_newer_version
+from scripts.versioning import (
+    check_test_version_exists,
+    check_url,
+    validate_newer_version,
+)
 
 
 class _DummyUrlResponseContext:
@@ -49,6 +53,17 @@ def fake_urlopen(*_: object, **__: object) -> _DummyUrlResponseContext:
     return _DummyUrlResponseContext()
 
 
+def test_check_url() -> None:
+    """Test check url works."""
+    check_url("https://random")
+
+
+def test_check_url_fail() -> None:
+    """Test check url doesn't fail."""
+    with pytest.raises(ValueError, match="URL must start with"):
+        check_url("random")
+
+
 def test_validate_newer_version_allows_missing_package_404(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -64,6 +79,15 @@ def test_validate_newer_version_raises_for_non_404_http_errors(
     monkeypatch.setattr("scripts.versioning.urllib.request.urlopen", fake_urlopen_500)
     with pytest.raises(HTTPError):
         validate_newer_version(version="1.0.0")
+
+
+def test_validate_newer_version_raises_for_no_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test missing a version raises an exception."""
+    monkeypatch.setattr("scripts.versioning.urllib.request.urlopen", fake_urlopen_500)
+    with pytest.raises(BadParameter):
+        validate_newer_version(version=None)
 
 
 def test_validate_newer_version_passes_when_candidate_is_newer(
