@@ -735,12 +735,12 @@ def test_verify_uploaded_size_non_msg_mismatch_tolerance(file_type: str) -> None
             "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
-                json_body={"name": new_file_path, "size": 999, "file": {}},
+                json_body={"name": new_file_path, "size": 200_000, "file": {}},
             ),
         ),
         pytest.raises(FileSizeMismatchError, match="Verification failed"),
     ):
-        connector.verify_uploaded_file(expected_size=988, verify_type="destination")
+        connector.verify_uploaded_file(expected_size=191_000, verify_type="destination")
 
 
 @pytest.mark.parametrize("file_type", list(FILE_SIZE_TOLERANCE.keys()))
