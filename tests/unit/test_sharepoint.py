@@ -10,6 +10,7 @@ import pytest
 import requests
 
 from aws_sharepoint_connector.config import SecretConfig
+from aws_sharepoint_connector.constants import FILE_SIZE_TOLERANCE
 from aws_sharepoint_connector.exceptions import (
     FileSizeMismatchError,
     IncorrectObjectTypeError,
@@ -721,10 +722,12 @@ def test_verify_uploaded_size_msg_mismatch_tolerance() -> None:
         connector.verify_uploaded_file(expected_size=988, verify_type="destination")
 
 
-def test_verify_uploaded_size_non_msg_mismatch_tolerance() -> None:
+@pytest.mark.parametrize("file_type", list(FILE_SIZE_TOLERANCE.keys()))
+def test_verify_uploaded_size_non_msg_mismatch_tolerance(file_type: str) -> None:
     """Test verify_uploaded_file fails within tolerance if size does not match."""
     connector = make_connector()
-
+    new_file_path = SP_FILE_PATH.replace("csv", file_type)
+    connector.update_with_file_path(new_file_path)
     connector.update_with_file_path(SP_FILE_PATH)
 
     with (
@@ -732,7 +735,7 @@ def test_verify_uploaded_size_non_msg_mismatch_tolerance() -> None:
             "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
-                json_body={"name": SP_FILE_PATH, "size": 999, "file": {}},
+                json_body={"name": new_file_path, "size": 999, "file": {}},
             ),
         ),
         pytest.raises(FileSizeMismatchError, match="Verification failed"),
@@ -740,18 +743,21 @@ def test_verify_uploaded_size_non_msg_mismatch_tolerance() -> None:
         connector.verify_uploaded_file(expected_size=988, verify_type="destination")
 
 
-def test_verify_uploaded_size_msg_exact_match() -> None:
+@pytest.mark.parametrize("file_type", list(FILE_SIZE_TOLERANCE.keys()))
+def test_verify_uploaded_size_custom_exact_match(
+    file_type: str,
+) -> None:
     """Test verify_uploaded_file fails within tolerance if size does not match."""
     connector = make_connector()
-
-    connector.update_with_file_path(SP_FILE_PATH_MSG)
+    new_file_path = SP_FILE_PATH.replace("csv", file_type)
+    connector.update_with_file_path(new_file_path)
 
     with (
         patch(
             "aws_sharepoint_connector.sharepoint.requests.get",
             return_value=utils.build_response(
                 status_code=200,
-                json_body={"name": SP_FILE_PATH_MSG, "size": 999, "file": {}},
+                json_body={"name": new_file_path, "size": 999, "file": {}},
             ),
         ),
     ):
