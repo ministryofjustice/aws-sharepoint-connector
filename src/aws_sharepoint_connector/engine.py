@@ -57,6 +57,7 @@ class Engine(ABC):
 
     Methods:
         _list_source_files: List files available in the source storage.
+        list_source_files: Public method to list files available in the source storage.
         _download_file: Download a file from the source storage.
         _upload_file: Upload a file to the destination storage.
         _delete_source_file: Delete file from S3 after successful transfer.
@@ -91,8 +92,50 @@ class Engine(ABC):
         )
 
     @abstractmethod
-    def list_source_files(self) -> list[str]:
+    def _list_source_files(
+        self,
+        prefixes: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
         """List files available in the source storage."""
+
+    def list_source_files(
+        self,
+        prefixes: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
+        """List all object keys in the source storage.
+
+        Args:
+            prefixes (list[str] | None): Optional key/folder prefixes to filter results
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
+
+        Returns:
+            list[str]: All object keys in the source storage.
+
+        Raises:
+            ProcessingError: If the listing request fails.
+
+        """
+        include_ext = (
+            [ext.lower().replace(".", "") for ext in include_ext]
+            if include_ext
+            else None
+        )
+        exclude_ext = (
+            [ext.lower().replace(".", "") for ext in exclude_ext]
+            if exclude_ext
+            else None
+        )
+        return self._list_source_files(
+            prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+        )
 
     @abstractmethod
     def _download_file(self, source: str) -> bytes:
@@ -213,7 +256,7 @@ class UploadToSharePointEngine(Engine):
     """Engine for uploading files from S3 to SharePoint.
 
     Methods:
-        list_source_files: List files available in the S3 source bucket.
+        _list_source_files: List files available in the S3 source bucket.
         _download_file: Download a file from the S3 source bucket.
         _upload_file: Upload a file to the SharePoint destination.
         _delete_source_file: Delete file from S3 after successful transfer.
@@ -224,11 +267,21 @@ class UploadToSharePointEngine(Engine):
 
     """
 
-    def list_source_files(self) -> list[str]:
+    def _list_source_files(
+        self,
+        prefixes: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
         """List all object keys in the S3 source bucket.
 
         Args:
-            None
+            prefixes (list[str] | None): Optional key prefixes to filter results
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
             list[str]: All object keys in the S3 source bucket.
@@ -237,7 +290,9 @@ class UploadToSharePointEngine(Engine):
             ProcessingError: If the listing request fails.
 
         """
-        return self.s3_connector.list_objects()
+        return self.s3_connector.list_objects(
+            prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+        )
 
     def _validate_plan(self, source: str, destination: str) -> None:
         """Validate planned file movement is feasible before execution.
@@ -275,6 +330,7 @@ class UploadToSharePointEngine(Engine):
             errors.append(str(exc))
 
         folder = str(Path(destination).parent)
+        folder_exists = False
         if folder and folder != ".":
             try:
                 self.sharepoint_connector.check_object_exists(folder, "folder")
@@ -414,11 +470,21 @@ class UploadToS3Engine(Engine):
 
     """
 
-    def list_source_files(self) -> list[str]:
+    def _list_source_files(
+        self,
+        prefix: str = "",
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
         """List all file paths in the SharePoint source library.
 
         Args:
-            None
+            prefix (str): Optional path prefix to filter results
+                (e.g. ``"reports/2026/"``). Defaults to ``""`` (list all files).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
             list[str]: All file paths in the SharePoint source library.
@@ -427,7 +493,9 @@ class UploadToS3Engine(Engine):
             ProcessingError: If the listing request fails.
 
         """
-        return self.sharepoint_connector.list_files()
+        return self.sharepoint_connector.list_files(
+            prefix=prefix, include_ext=include_ext, exclude_ext=exclude_ext
+        )
 
     def _validate_plan(self, source: str, destination: str) -> None:
         """Validate planned file movement is feasible before execution.

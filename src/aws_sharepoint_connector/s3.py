@@ -29,38 +29,65 @@ class S3Connector(BaseModel):
         """Set the S3 object key for the archive file operation."""
         self.archive_key = archive_key
 
-    def list_objects(self, prefix: str = "") -> list[str]:
-        """List all object keys in the S3 bucket, optionally filtered by prefix.
+    def list_objects(
+        self,
+        prefixes: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
+        """List all object keys in the S3 bucket.
 
-        Handles pagination automatically; all matching keys are returned regardless
-        of bucket size.
+        Handles pagination automatically and can be filtered to include specific
+        prefixes. Set include_ext to restrict to only certain file types and exclude_ext
+        to filter out certain file types.
 
         Args:
-            prefix (str): Optional key prefix to filter results
-                (e.g. ``"reports/2026/"``). Defaults to ``""`` (list all objects).
+            prefixes (list[str]): Optional key prefixes to filter results
+                (e.g. ``["reports/2026/"]``). Defaults to ``[]`` (list all objects).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All object keys in the bucket matching the given prefix.
+            list[str]: All object keys in the bucket matching any specified filters.
 
         Raises:
             ProcessingError: If the listing request fails.
 
         """
-        log.info("Listing objects in s3://%s/%s...", self.bucket, prefix)
+        log.info(
+            "Listing objects in s3://%s/ for the following prefixes: %s",
+            self.bucket,
+            ", ".join(prefixes or ""),
+        )
+
         keys: list[str] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket}
-        if prefix:
-            kwargs["Prefix"] = prefix
-        try:
-            while True:
-                response = self.client.list_objects_v2(**kwargs)
-                keys.extend(obj["Key"] for obj in response.get("Contents", []))
-                if not response.get("IsTruncated"):
-                    break
-                kwargs["ContinuationToken"] = response["NextContinuationToken"]
-        except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to list objects in s3://{self.bucket}: {exc}"
-            raise ProcessingError(err) from exc
+
+        prefixes = prefixes or ["."]  # if no prefixes, then provide a dummy prefix
+
+        for prefix in prefixes:
+            if prefix != ".":  # ignore dummy prefix
+                kwargs["Prefix"] = prefix
+
+            try:
+                while True:
+                    response = self.client.list_objects_v2(**kwargs)
+                    for obj in response.get("Contents", []):
+                        ext = obj["Key"].split(".")[-1]
+                        if include_ext and ext not in include_ext:
+                            continue
+                        if exclude_ext and ext in exclude_ext:
+                            continue
+                        keys.append(obj["Key"])
+                    if not response.get("IsTruncated"):
+                        break
+                    kwargs["ContinuationToken"] = response["NextContinuationToken"]
+            except (BotoCoreError, ClientError) as exc:
+                err = f"Failed to list objects in s3://{self.bucket}: {exc}"
+                raise ProcessingError(err) from exc
+
         log.info("Found %d object(s) in s3://%s/%s.", len(keys), self.bucket, prefix)
         return keys
 
