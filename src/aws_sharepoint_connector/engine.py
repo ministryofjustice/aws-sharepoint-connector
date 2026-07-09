@@ -110,18 +110,19 @@ class Engine(ABC):
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
     ) -> list[str]:
-        """List all object keys in the source storage.
+        """List source files in the active source storage.
 
         Args:
-            search_folders (list[str] | None): Optional key/folders to filter results
-                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
+            search_folders (list[str] | None): Optional folders/prefixes to filter
+                results (e.g. ``["reports/2026/"]``). Defaults to ``None``
+                (list all source files).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
             exclude_ext (list[str] | None): Optional list of file extensions to exclude
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All object keys in the source storage.
+            list[str]: Matching source file paths relative to bucket/library root.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -285,18 +286,19 @@ class UploadToSharePointEngine(Engine):
         include_ext: list[str],
         exclude_ext: list[str],
     ) -> list[str]:
-        """List all object keys in the S3 source bucket.
+        """List source files in the S3 source bucket.
 
         Args:
-            folders (list[str] | None): Optional key/folders to filter results
-                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
+            folders (list[str] | None): Optional key/prefix filters
+                (e.g. ``["reports/2026/"]``). Defaults to ``None``
+                (list all source files).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
             exclude_ext (list[str] | None): Optional list of file extensions to exclude
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All object keys in the S3 source bucket.
+            list[str]: Matching object keys in the S3 source bucket.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -313,7 +315,8 @@ class UploadToSharePointEngine(Engine):
 
         - The S3 source bucket is accessible.
         - The source S3 key exists.
-        - The destination SharePoint parent folder exists.
+                - The destination SharePoint parent folder is valid and can be used.
+                    Missing folders are created automatically.
 
         Args:
             source (str): Source file path (S3 key).

@@ -44,7 +44,7 @@ class S3Connector(BaseModel):
 
         Args:
             prefixes (list[str]): Optional key prefixes to filter results
-                (e.g. ``["reports/2026/"]``). Defaults to ``[]`` (list all objects).
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
             exclude_ext (list[str] | None): Optional list of file extensions to exclude
@@ -73,10 +73,12 @@ class S3Connector(BaseModel):
         keys: list[str] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket}
 
-        prefixes = prefixes or ["."]  # if no prefixes, then provide a dummy prefix
+        # Use a sentinel prefix to run a single unscoped list operation when callers
+        # do not pass explicit prefixes.
+        prefixes = prefixes or ["."]
 
         for prefix in prefixes:
-            if prefix != ".":  # ignore dummy prefix
+            if prefix != ".":
                 kwargs["Prefix"] = prefix
 
             try:

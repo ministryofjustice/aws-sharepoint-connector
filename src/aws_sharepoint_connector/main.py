@@ -63,7 +63,7 @@ def create_engine(
             A configured engine instance ready to copy file transfers.
 
     Raises:
-        ValueError: If ``mode`` is not one of the valid transfer directions.
+        InvalidModeError: If ``mode`` is not one of the valid transfer directions.
         ValidationError: If any configuration value fails Pydantic validation.
 
     Example:

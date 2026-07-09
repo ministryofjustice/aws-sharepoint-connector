@@ -36,10 +36,12 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
 3. For each file, call `engine.copy(source, destination, archive_folder="", source_handling="none")`:
-    - Calls `engine._validate_plan` to validate the transfer before any file movement begins.
+    - Validates source and destination paths (and archive folder if supplied).
+    - Calls engine validation checks before any file movement begins.
     - Download from the source system (SharePoint or S3).
     - Upload to the destination system (S3 or SharePoint).
     - Verify transfer was successful by comparing byte size.
+    - For `write_to_sharepoint`, create missing destination folders automatically.
     - Optionally delete or archive the source file.
 4. Returns a `Result` object confirming the copying was successful
 5. Handle errors per file in your calling code.
@@ -57,11 +59,12 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 - `src/aws_sharepoint_connector/sharepoint.py`: SharePoint connector.
 - `src/aws_sharepoint_connector/s3.py`: AWS S3 connector.
 - `src/aws_sharepoint_connector/auth.py`: Azure authentication and Graph utilities.
-- `src/aws_sharepoint_connector/utils.py`: Logger and HTTP retry logic.
+- `src/aws_sharepoint_connector/utils.py`: Logger, extension normalisation,
+  path validation, and HTTP retry logic.
 
 ## Configuration
 
-Configuration is parsed by the config classes in `src/connector/config.py` which store
+Configuration is parsed by the config classes in `src/aws_sharepoint_connector/config.py` which store
 the S3 bucket, Sharepoint site and library and Azure App secrets
 
 ### Required Environment Variables
@@ -98,6 +101,16 @@ Passed to the engine's `copy` method to identify a specific file to move
 | `destination` | string | Destination file path (S3 key or SharePoint path) |
 | `archive_folder` | string | Folder to archive the source file into when `source_handling="archive"`. Must be a directory path in the same source system. |
 | `source_handling` | string | What to do with source after successful transfer: `"none"` (default), `"delete"`, or `"archive"`. |
+
+Optional source listing helper on each engine:
+
+**`list_source_files(search_folders=None, include_ext=None, exclude_ext=None)`**
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `search_folders` | list[string] \| None | Optional folder/prefix filters in the source system. Duplicate and overlapping folders are supported. |
+| `include_ext` | list[string] \| None | Optional allow-list of file extensions. Accepts values with or without `.` and in any case. |
+| `exclude_ext` | list[string] \| None | Optional deny-list of file extensions, applied after normalisation. |
 
 ### Example: SharePoint → S3 (single file)
 
@@ -225,7 +238,7 @@ uv run python -m pytest tests/e2e              # E2E tests (no real API calls)
 
 ### Programmatic API
 
-Import `create_engine` from the `connector` package.
+Import `create_engine` from the `aws_sharepoint_connector` package.
 The Azure secret values must be present as environment variables.
 
 ```python
@@ -256,6 +269,16 @@ for plan in plans:
 You can optionally use the `list_source_files` methods on the engines to obtain a list
 of all files in the S3 bucket or SharePoint library. This can be used to programmatically
 build the list of plans to iterate over.
+
+Example with filters:
+
+```python
+source_files = engine.list_source_files(
+    search_folders=["reports/2026", "reports/2026/subfolder"],
+    include_ext=["csv", ".json"],
+    exclude_ext=["tmp"],
+)
+```
 
 ## Error handling and retries
 
@@ -289,19 +312,20 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 
 ### 1) Add a new transfer mode
 
-1. Create a new engine class in `src/connector/engine.py` implementing:
-    - `download_file(self, source: str) -> bytes`
-    - `upload_file(self, content: bytes, destination: str, content_size: int) -> None`
-    - `archive_source_file(self, source: str, archive_folder: str, content_size: int) -> None`
-    - `delete_source_file(self, source: str) -> None`
-    - `validate_plan(self, source: str, destination: str) -> None`
-2. Register the engine in `MODE_MAP` in `src/connector/main.py`.
-3. Expand the `Literal` type for `mode` in `create_engine()` in `src/connector/main.py`.
+1. Create a new engine class in `src/aws_sharepoint_connector/engine.py` implementing:
+    - `_list_source_files(self, folders: list[str], include_ext: list[str], exclude_ext: list[str]) -> list[str]`
+    - `_download_file(self, source: str) -> bytes`
+    - `_upload_file(self, content: bytes, destination: str, content_size: int) -> None`
+    - `_archive_source_file(self, source: str, archive_folder: str, content_size: int) -> None`
+    - `_delete_source_file(self, source: str) -> None`
+    - `_validate_plan(self, source: str, destination: str) -> None`
+2. Register the engine in `MODE_MAP` in `src/aws_sharepoint_connector/main.py`.
+3. Expand the `Literal` type for `mode` in `create_engine()` in `src/aws_sharepoint_connector/main.py`.
 4. Add unit tests for success and failure paths, including `validate_plan` and source handling (`none`/`delete`/`archive`).
 
 ### 2) Add additional configuration
 
-1. Add a field in `SecretConfig` (`src/connector/config.py`).
+1. Add a field in `SecretConfig` (`src/aws_sharepoint_connector/config.py`).
 2. Add validation if needed with a `field_validator`.
 3. Update `.env` docs and this README.
 4. Use the field in connector or engine logic.
@@ -310,10 +334,11 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 
 ### Common errors and solutions
 
-- **`Pre-flight validation failed with N error(s)`**: One or more sources or destinations could not be verified before transfers started. The error message lists every problem — fix all of them before retrying.
+- **`Validation failed with N error(s)`**: One or more sources or destinations could not be verified before transfers started. The error message lists every problem - fix all of them before retrying.
 - **`Library 'X' not found on site`**: Verify `sp_library` spelling and that the app has SharePoint access to the target site/library
 - **`Source file not found in SharePoint`**: Verify the file exists at the exact path supplied as `source`; check case sensitivity
-- **`Destination folder not found in SharePoint`**: The parent directory of the destination path does not exist in SharePoint; create it before running the connector
+- **`InvalidPathError`**: The provided source, destination, or archive path was empty, absolute, or contained unsafe path segments (such as `..`).
+- **`Destination folder not found in SharePoint`**: In `write_to_sharepoint` mode, missing destination folders are now created automatically; this error usually indicates permissions or object-type conflicts.
 - **`S3 bucket does not exist`** or **`S3 object does not exist`**: Verify bucket name is correct, bucket exists in eu-west-2, and IAM principal has access
 - **`Access denied to S3 bucket/object`**: Check IAM policy grants `s3:GetObject`, `s3:PutObject`, `s3:HeadObject`, and `s3:HeadBucket` on the bucket
 - **`AADSTS65001` or Graph auth failures**: Verify app permissions and consent in Azure; may need admin consent

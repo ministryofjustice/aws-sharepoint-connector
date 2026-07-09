@@ -71,7 +71,7 @@ def validate_path(path: str, field_name: str, *, allow_empty: bool = False) -> N
 
 
 def setup_logger() -> logging.Logger:
-    """Return a logger object and an io stream of the data that is logged."""
+    """Return a configured package logger with a stdout stream handler."""
     log = logging.getLogger("s3-sharepoint")
     log.setLevel(logging.INFO)
     if not log.handlers:
