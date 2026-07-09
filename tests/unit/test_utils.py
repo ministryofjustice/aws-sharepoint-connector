@@ -6,7 +6,7 @@ import pytest
 import requests
 from requests import Response
 
-from aws_sharepoint_connector import utils
+from aws_sharepoint_connector import exceptions, utils
 from aws_sharepoint_connector.constants import RETRYABLE_ERROR_CODES
 
 
@@ -128,3 +128,50 @@ def test_request_with_retry_raises_for_unsupported_method() -> None:
     """Unsupported methods should fail fast with ValueError."""
     with pytest.raises(ValueError, match="Unsupported HTTP method"):
         utils.request_with_retry("PUT", "https://example.com")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("extensions", "expected"),
+    [
+        ("", ""),
+        ("csv", "csv"),
+        (".csv", "csv"),
+        ("CSV", "csv"),
+        (".XlSx", "xlsx"),
+        ("  .Pdf  ", "pdf"),
+        ("  ", ""),
+        (".", ""),
+    ],
+)
+def test_normalise_extension(extensions: str, expected: str) -> None:
+    """normalise_extensions lowercases, strips dots, and drops empty values."""
+    assert utils.normalise_extension(extensions) == expected
+
+
+def test_validate_remote_path_accepts_relative_paths() -> None:
+    """A normal relative path passes validation."""
+    utils.validate_path("reports/2026/file.csv", "source")
+
+
+def test_validate_remote_path_allows_empty_when_permitted() -> None:
+    """An empty path is allowed only when allow_empty is set."""
+    utils.validate_path("", "archive_folder", allow_empty=True)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "/abs/path.csv",
+        "../escape.csv",
+        "reports/../../etc/passwd",
+        "reports/2026/..",
+        "reports\\2026\\file.csv",
+        "reports/2026/file\x00.csv",
+        "reports/2026/file\n.csv",
+    ],
+)
+def test_validate_remote_path_rejects_unsafe_paths(path: str) -> None:
+    """Empty, absolute, traversal, backslash, and control-char paths are rejected."""
+    with pytest.raises(exceptions.InvalidPathError):
+        utils.validate_path(path, "source")

@@ -177,6 +177,38 @@ def test_list_objects_empty_bucket(connector: S3Connector, s3: boto3.client) -> 
     assert not connector.list_objects()
 
 
+def test_list_objects_skips_folder_markers(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """list_objects excludes zero-byte S3 folder-marker keys ending in '/'."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/", Body=b"")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+    assert connector.list_objects() == ["include/a.csv"]
+
+
+def test_list_objects_extension_filter_is_case_insensitive(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """list_objects matches extensions regardless of case."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.CSV", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/b.Xlsx", Body=b"data")
+    assert connector.list_objects(include_ext=[".csv"]) == ["include/a.CSV"]
+
+
+def test_list_objects_key_without_extension(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """A key with no extension is excluded by include and kept by exclude filters."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/README", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+
+    assert connector.list_objects(include_ext=["csv"]) == ["include/a.csv"]
+    assert connector.list_objects(exclude_ext=["csv"]) == ["include/README"]
+
+
 def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> None:
     """list_objects follows pagination to return all keys across multiple pages."""
     utils.create_bucket(S3_BUCKET, s3)
