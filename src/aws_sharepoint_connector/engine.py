@@ -21,7 +21,11 @@ from aws_sharepoint_connector.exceptions import (
 )
 from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.sharepoint import SharePointConnector
-from aws_sharepoint_connector.utils import setup_logger
+from aws_sharepoint_connector.utils import (
+    normalise_extension,
+    setup_logger,
+    validate_path,
+)
 
 log = setup_logger()
 
@@ -129,10 +133,10 @@ class Engine(ABC):
             else []
         )
         include_ext = (
-            [ext.lower().replace(".", "") for ext in include_ext] if include_ext else []
+            [normalise_extension(ext) for ext in include_ext] if include_ext else []
         )
         exclude_ext = (
-            [ext.lower().replace(".", "") for ext in exclude_ext] if exclude_ext else []
+            [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
         )
 
         return self._list_source_files(
@@ -223,6 +227,8 @@ class Engine(ABC):
             ProcessingError: If any step of the transfer fails, including validation,
                 download, upload, source deletion, or source archiving.
             ObjectNotFoundError: If the source file does not exist in source storage.
+            InvalidPathError: If ``source``, ``destination``, or ``archive_folder`` is
+                empty, absolute, or contains unsafe ``..`` traversal segments.
 
         Source is the full S3 key (excluding the bucket name) or the full path to the
         SharePoint file (excluding the site and library). Destination is the full path
@@ -235,6 +241,10 @@ class Engine(ABC):
         and verification.
 
         """
+        validate_path(source, "source")
+        validate_path(destination, "destination")
+        validate_path(archive_folder, "archive_folder", allow_empty=True)
+
         if source_handling == "archive" and not archive_folder:
             err = "archive_folder must be provided when source_handling is 'archive'."
             raise NoArchiveFolderGivenError(err)
