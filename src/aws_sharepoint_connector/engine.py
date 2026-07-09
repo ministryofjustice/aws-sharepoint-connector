@@ -94,9 +94,9 @@ class Engine(ABC):
     @abstractmethod
     def _list_source_files(
         self,
-        prefixes: list[str] | None = None,
-        include_ext: list[str] | None = None,
-        exclude_ext: list[str] | None = None,
+        prefixes: list[str],
+        include_ext: list[str],
+        exclude_ext: list[str],
     ) -> list[str]:
         """List files available in the source storage."""
 
@@ -123,16 +123,18 @@ class Engine(ABC):
             ProcessingError: If the listing request fails.
 
         """
+        prefixes = (
+            [prefix.lower().lstrip("/").rstrip("/") for prefix in prefixes]
+            if prefixes
+            else []
+        )
         include_ext = (
-            [ext.lower().replace(".", "") for ext in include_ext]
-            if include_ext
-            else None
+            [ext.lower().replace(".", "") for ext in include_ext] if include_ext else []
         )
         exclude_ext = (
-            [ext.lower().replace(".", "") for ext in exclude_ext]
-            if exclude_ext
-            else None
+            [ext.lower().replace(".", "") for ext in exclude_ext] if exclude_ext else []
         )
+
         return self._list_source_files(
             prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
         )
@@ -269,9 +271,9 @@ class UploadToSharePointEngine(Engine):
 
     def _list_source_files(
         self,
-        prefixes: list[str] | None = None,
-        include_ext: list[str] | None = None,
-        exclude_ext: list[str] | None = None,
+        prefixes: list[str],
+        include_ext: list[str],
+        exclude_ext: list[str],
     ) -> list[str]:
         """List all object keys in the S3 source bucket.
 

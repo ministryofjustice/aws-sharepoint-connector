@@ -88,7 +88,12 @@ class S3Connector(BaseModel):
                 err = f"Failed to list objects in s3://{self.bucket}: {exc}"
                 raise ProcessingError(err) from exc
 
-        log.info("Found %d object(s) in s3://%s/%s.", len(keys), self.bucket, prefix)
+        log.info(
+            "Found %d object(s) in s3://%s/ for the following prefixes: %s",
+            len(keys),
+            self.bucket,
+            ", ".join(prefixes),
+        )
         return keys
 
     def download_from_s3(self) -> bytes:
