@@ -1,12 +1,13 @@
 """S3 connector for handling interactions with Amazon S3."""
 
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
 
 from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
-from aws_sharepoint_connector.utils import setup_logger
+from aws_sharepoint_connector.utils import normalise_extension, setup_logger
 
 log = setup_logger()
 
@@ -62,6 +63,13 @@ class S3Connector(BaseModel):
             ", ".join(prefixes or ""),
         )
 
+        include_ext = (
+            [normalise_extension(ext) for ext in include_ext] if include_ext else []
+        )
+        exclude_ext = (
+            [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
+        )
+
         keys: list[str] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket}
 
@@ -75,12 +83,15 @@ class S3Connector(BaseModel):
                 while True:
                     response = self.client.list_objects_v2(**kwargs)
                     for obj in response.get("Contents", []):
-                        ext = obj["Key"].split(".")[-1]
+                        key = obj["Key"]
+                        if key.endswith("/"):  # skip S3 folder-marker objects
+                            continue
+                        ext = normalise_extension(PurePosixPath(key).suffix)
                         if include_ext and ext not in include_ext:
                             continue
                         if exclude_ext and ext in exclude_ext:
                             continue
-                        keys.append(obj["Key"])
+                        keys.append(key)
                     if not response.get("IsTruncated"):
                         break
                     kwargs["ContinuationToken"] = response["NextContinuationToken"]

@@ -35,7 +35,11 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
-from aws_sharepoint_connector.utils import build_retry_session, request_with_retry
+from aws_sharepoint_connector.utils import (
+    build_retry_session,
+    normalise_extension,
+    request_with_retry,
+)
 
 log = logging.getLogger("s3-sharepoint")
 
@@ -258,8 +262,12 @@ class SharePointConnector(BaseModel):
             f"/root/children?$select=name,folder"
         )
 
-        include_set = set(include_ext or [])
-        exclude_set = set(exclude_ext or [])
+        include_ext = (
+            [normalise_extension(ext) for ext in include_ext] if include_ext else []
+        )
+        exclude_ext = (
+            [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
+        )
 
         file_paths: list[str] = []
         folder_paths: deque[str] = deque(folders or [""])
@@ -300,10 +308,10 @@ class SharePointConnector(BaseModel):
                         if "folder" in item:
                             folder_paths.append(item_path)
                         else:
-                            ext = Path(name).suffix.lower().lstrip(".")
-                            if include_set and ext not in include_set:
+                            ext = normalise_extension(PurePosixPath(name).suffix)
+                            if include_ext and ext not in include_ext:
                                 continue
-                            if exclude_set and ext in exclude_set:
+                            if exclude_ext and ext in exclude_ext:
                                 continue
                             file_paths.append(item_path)
 
