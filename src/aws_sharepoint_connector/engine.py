@@ -94,7 +94,7 @@ class Engine(ABC):
     @abstractmethod
     def _list_source_files(
         self,
-        prefixes: list[str],
+        folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
     ) -> list[str]:
@@ -102,14 +102,14 @@ class Engine(ABC):
 
     def list_source_files(
         self,
-        prefixes: list[str] | None = None,
+        search_folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
     ) -> list[str]:
         """List all object keys in the source storage.
 
         Args:
-            prefixes (list[str] | None): Optional key/folder prefixes to filter results
+            search_folders (list[str] | None): Optional key/folders to filter results
                 (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
@@ -123,9 +123,9 @@ class Engine(ABC):
             ProcessingError: If the listing request fails.
 
         """
-        prefixes = (
-            [prefix.lower().lstrip("/").rstrip("/") for prefix in prefixes]
-            if prefixes
+        folders = (
+            [folder.lower().strip("/") for folder in search_folders]
+            if search_folders
             else []
         )
         include_ext = (
@@ -136,7 +136,7 @@ class Engine(ABC):
         )
 
         return self._list_source_files(
-            prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+            folders=folders, include_ext=include_ext, exclude_ext=exclude_ext
         )
 
     @abstractmethod
@@ -271,14 +271,14 @@ class UploadToSharePointEngine(Engine):
 
     def _list_source_files(
         self,
-        prefixes: list[str],
+        folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
     ) -> list[str]:
         """List all object keys in the S3 source bucket.
 
         Args:
-            prefixes (list[str] | None): Optional key prefixes to filter results
+            folders (list[str] | None): Optional key/folders to filter results
                 (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
@@ -293,7 +293,7 @@ class UploadToSharePointEngine(Engine):
 
         """
         return self.s3_connector.list_objects(
-            prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+            prefixes=folders, include_ext=include_ext, exclude_ext=exclude_ext
         )
 
     def _validate_plan(self, source: str, destination: str) -> None:
@@ -474,15 +474,15 @@ class UploadToS3Engine(Engine):
 
     def _list_source_files(
         self,
-        prefix: str = "",
+        folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
     ) -> list[str]:
         """List all file paths in the SharePoint source library.
 
         Args:
-            prefix (str): Optional path prefix to filter results
-                (e.g. ``"reports/2026/"``). Defaults to ``""`` (list all files).
+            folders (list[str] | None): Optional list of folders to search within
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (search all folders).
             include_ext (list[str] | None): Optional list of file extensions to include
                 (e.g. ``[".csv", ".json"]``).
             exclude_ext (list[str] | None): Optional list of file extensions to exclude
@@ -496,7 +496,7 @@ class UploadToS3Engine(Engine):
 
         """
         return self.sharepoint_connector.list_files(
-            prefix=prefix, include_ext=include_ext, exclude_ext=exclude_ext
+            folders=folders, include_ext=include_ext, exclude_ext=exclude_ext
         )
 
     def _validate_plan(self, source: str, destination: str) -> None:

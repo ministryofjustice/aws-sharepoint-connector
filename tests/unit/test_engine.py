@@ -85,11 +85,17 @@ class TestEngines:
             S3Connector, "list_objects", return_value=["file1.csv", "file2.csv"]
         ) as mock_list:
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            files = upload_sp_engine.list_source_files([], [".CSV", "csv"], [".XlSx"])
+            files = upload_sp_engine.list_source_files(
+                ["/folder/", "other/folder/", "another/folder"],
+                [".CSV", "csv"],
+                [".XlSx"],
+            )
 
         assert files == ["file1.csv", "file2.csv"]
         mock_list.assert_called_once_with(
-            prefixes=[], include_ext=["csv", "csv"], exclude_ext=["xlsx"]
+            prefixes=["folder", "other/folder", "another/folder"],
+            include_ext=["csv", "csv"],
+            exclude_ext=["xlsx"],
         )
 
     def test_upload_sharepoint_validate_plan_valid(self, s3: boto3.client) -> None:
@@ -411,10 +417,18 @@ class TestEngines:
             SharePointConnector, "list_files", return_value=["file1.csv", "file2.csv"]
         ) as mock_list:
             upload_s3_engine = self.setup_engine("s3", s3)
-            files = upload_s3_engine.list_source_files()
+            files = upload_s3_engine.list_source_files(
+                ["/folder/", "other/folder/", "another/folder"],
+                [".CSV", "csv"],
+                [".XlSx"],
+            )
 
         assert files == ["file1.csv", "file2.csv"]
-        mock_list.assert_called_once_with()
+        mock_list.assert_called_once_with(
+            folders=["folder", "other/folder", "another/folder"],
+            include_ext=["csv", "csv"],
+            exclude_ext=["xlsx"],
+        )
 
     def test_upload_s3_validate_plan_valid(self, s3: boto3.client) -> None:
         """Test that validate_plan returns True for valid plans."""
