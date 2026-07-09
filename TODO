@@ -1,0 +1,49 @@
+extend test scenarios
+changelog
+
+
+Hardcoded organisation domain breaks public reuse. SHAREPOINT_DOMAIN = "justiceuk.sharepoint.com:" in constants.py and the justiceuk.sharepoint.com checks in config.py make this library usable only by one tenant. For a public PyPI package this is a design flaw — make the SharePoint hostname/tenant a required config value.
+
+Access token never refreshes. The Graph token is fetched once in SharePointConnector init (sharepoint.py). Graph tokens expire (~60 min). Long batches or large multi-GB uploads will fail mid-run with 401. Option: refresh on expiry / 401, or fetch per-operation with caching.
+
+Whole-file in-memory transfer. _copy downloads the entire object into bytes then uploads (engine.py). Combined with S3 get_object(...).read() and SharePoint fetch_file() reading full content, memory scales with file size. Option: stream download→upload; this also unlocks true large-file support.
+
+Integrity verified only by byte size, not content. Both verify_uploaded_object (s3.py) and verify_uploaded_file (sharepoint.py) compare only sizes. Two different files of equal size pass. Option: compare S3 ETag/MD5 and Graph quickXorHash/content hash for real data-integrity guarantees.
+
+Large-file archive path is broken (SharePoint). archive_file uses a single requests.put of the full content to /content (sharepoint.py), bypassing the chunked upload session. Files beyond Graph's simple-upload limits will fail. Option: reuse the chunked upload session for archive.
+
+S3 upload capped at single PUT. upload_to_s3 uses put_object (5 GB hard limit, and memory-heavy well before that). Option: use multipart upload / upload_fileobj with streaming.
+
+
+Empty (0-byte) files. SharePoint chunk loop while start < file_size never runs for size 0, so nothing uploads and verification then fails. Also if actual_size: in SharePoint verify treats a legitimate 0-byte result as NoFileSizeError. Option: special-case empty files.
+
+Graph throttling Retry-After ignored. request_with_retry retries 429/5xx with fixed 0.5*attempt backoff and no jitter, ignoring Graph's Retry-After header (utils.py). Option: honour Retry-After, add jitter, exponential backoff.
+
+pathlib.Path used for remote paths. set_archive_url, _archive_source_file, and _validate_plan build SharePoint/S3 paths with Path(...) (engine.py, sharepoint.py). On non-POSIX hosts this yields backslashes. Option: use PurePosixPath everywhere for remote keys/paths.
+
+get_drive_id exact, case-sensitive name match. Library display-name mismatches (case/whitespace) yield NoLibraryError (auth.py). Option: case-insensitive/trimmed match or clearer diagnostics.
+
+Duplicated retry strategies. Manual request_with_retry and urllib3 build_retry_session coexist with different policies. Option: consolidate into one retry policy/config.
+
+Heavy mutable state / temporal coupling in connectors. set_key, set_archive_key, update_with_file_path, set_upload_url, set_download_url must be called in a precise order before other methods work. This is error-prone. Option: pass paths as method arguments or use per-operation context objects instead of mutating shared state.
+
+boto3.client("s3") created internally with no injection. No region/endpoint/role/config override, and can't inject a pre-built client (harder for VPC endpoints, GovCloud, custom endpoints, testing). Option: allow an injected client or a config block.
+
+Redundant computed values. In _archive_source_file (SharePoint) archive_path is computed but only logged while set_archive_url(archive_folder) recomputes it. Result.status is always "success". Option: remove redundancy / model status as an enum.
+
+Missing py.typed marker. For a typed public library, downstream consumers won't get your types without a py.typed file. Option: ship it in the package.
+
+Library vs application mixing. test.py at repo root is the Docker ENTRYPOINT (Dockerfile), and scenarios live there. This blurs the line between a reusable library and an app. Option: move runnable app/demo out of the published package surface.
+
+FILE_SIZE_TOLERANCE is undocumented magic. The 20 KB tolerance for msg/docx/xlsx (SharePoint re-compression) is a good insight but hardcoded and unexplained. Option: document rationale and make configurable.
+
+dd tests for: 0-byte files; files spanning multiple chunk boundaries and >5 GB S3 (multipart); token expiry/refresh and 401 handling; 429 Retry-After honouring; S3 extension case-sensitivity and no-extension keys; S3 folder-marker keys; Unicode/special-character paths; path-traversal rejection; large-file SharePoint archive.
+
+Failure/rollback E2E. Current E2E (test_e2e.py) covers only happy-path 1/6 files. Option: add E2E for validation failure, mid-batch failure, and verify no partial/orphaned state.
+
+Content-integrity tests. Once hash verification is added, test that equal-size-but-different-content is rejected.
+
+Observability / operations
+Structured logging & metrics. Logging is plain string logs with a module-global logger. Option: structured logs, correlation/run IDs, and per-transfer metrics (bytes, duration, retries) for pipeline observability.
+
+Error aggregation across a batch. copy is per-file; a batch run has no aggregated success/failure summary or dead-letter list. Option: add a batch runner returning a consolidated report.
