@@ -129,9 +129,7 @@ class Engine(ABC):
 
         """
         folders = (
-            [folder.lower().strip("/") for folder in search_folders]
-            if search_folders
-            else []
+            [folder.strip("/") for folder in search_folders] if search_folders else []
         )
         include_ext = (
             [normalise_extension(ext) for ext in include_ext] if include_ext else []
