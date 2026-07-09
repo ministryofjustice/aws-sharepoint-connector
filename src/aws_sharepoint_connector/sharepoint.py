@@ -1,6 +1,7 @@
 """SharePoint connector for handling interactions with Microsoft Graph API."""
 
 import logging
+from collections import deque
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -227,10 +228,23 @@ class SharePointConnector(BaseModel):
         encoded_path = quote(archive_path, safe="/")
         self.archive_url = f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:/{encoded_path}:/content"
 
-    def list_files(self) -> list[str]:
+    def list_files(  # noqa: C901
+        self,
+        folders: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
         """List all files in the SharePoint library, including subfolders.
 
         Handles pagination automatically at every folder level.
+
+        Args:
+            folders (list[str] | None): Optional list of folders to search within
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (search all folders).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
             list[str]: File paths relative to the library root.
@@ -243,9 +257,13 @@ class SharePointConnector(BaseModel):
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
             f"/root/children?$select=name,folder"
         )
-        file_paths: list[str] = []
 
-        folder_paths: list[str] = [""]
+        include_set = set(include_ext or [])
+        exclude_set = set(exclude_ext or [])
+
+        file_paths: list[str] = []
+        folder_paths: deque[str] = deque(folders or [""])
+        visited_folders: set[str] = set()
 
         def children_url(folder_path: str) -> str:
             if not folder_path:
@@ -258,7 +276,11 @@ class SharePointConnector(BaseModel):
 
         try:
             while folder_paths:
-                folder_path = folder_paths.pop(0)
+                folder_path = folder_paths.popleft()
+                if folder_path in visited_folders:
+                    continue
+                visited_folders.add(folder_path)
+
                 next_url: str | None = children_url(folder_path)
 
                 while next_url:
@@ -274,9 +296,15 @@ class SharePointConnector(BaseModel):
                     for item in data.get("value", []):
                         name = item["name"]
                         item_path = f"{folder_path}/{name}" if folder_path else name
+
                         if "folder" in item:
                             folder_paths.append(item_path)
                         else:
+                            ext = Path(name).suffix.lower().lstrip(".")
+                            if include_set and ext not in include_set:
+                                continue
+                            if exclude_set and ext in exclude_set:
+                                continue
                             file_paths.append(item_path)
 
                     next_url = data.get("@odata.nextLink")

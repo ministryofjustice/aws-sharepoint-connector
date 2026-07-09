@@ -267,21 +267,264 @@ def test_set_archive_url() -> None:
     )
 
 
-def test_list_files_success() -> None:
+@pytest.mark.parametrize(
+    ("folders", "include_ext", "exclude_ext", "expected_files"),
+    [
+        (
+            ["include"],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "include/subfolder/b.csv",
+            ],
+        ),
+        (
+            ["include"],
+            None,
+            None,
+            ["include/a.csv", "include/c.xlsx", "include/subfolder/b.csv"],
+        ),
+        (
+            ["include"],
+            ["csv", "xlsx"],
+            None,
+            ["include/a.csv", "include/c.xlsx", "include/subfolder/b.csv"],
+        ),
+        (["include"], None, ["csv", "xlsx"], []),
+        (["include"], ["csv"], ["csv", "xlsx"], []),
+        (
+            ["include", "also_include"],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+                "include/subfolder/b.csv",
+                "also_include/subfolder/g.csv",
+            ],
+        ),
+        (
+            ["include", "also_include"],
+            None,
+            None,
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+                "include/subfolder/b.csv",
+                "also_include/subfolder/g.csv",
+            ],
+        ),
+        (
+            ["include", "also_include"],
+            ["csv", "xlsx"],
+            None,
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "include/subfolder/b.csv",
+                "also_include/subfolder/g.csv",
+            ],
+        ),
+        (
+            ["include", "also_include"],
+            None,
+            ["csv", "xlsx"],
+            ["also_include/f.pdf"],
+        ),
+        (
+            ["include", "also_include"],
+            ["csv"],
+            ["csv", "xlsx"],
+            [],
+        ),
+        (
+            None,
+            None,
+            None,
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+                "include/subfolder/b.csv",
+                "also_include/subfolder/g.csv",
+            ],
+        ),
+        (
+            [],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+                "include/subfolder/b.csv",
+                "also_include/subfolder/g.csv",
+            ],
+        ),
+    ],
+)
+def test_list_files_success(
+    folders: list[str] | None,
+    include_ext: list[str] | None,
+    exclude_ext: list[str] | None,
+    expected_files: list[str],
+) -> None:
     """list_files returns file names from the library root, excluding folders."""
     connector = make_connector()
     root_page = utils.mock_list_files_response(
-        file_names=["report.csv", "summary.xlsx"],
-        folder_names=["archive"],
+        file_names=[],
+        folder_names=["include", "also_include"],
     )
-    archive_page = utils.mock_list_files_response(file_names=[])
+    include_folder = utils.mock_list_files_response(
+        file_names=["a.csv", "c.xlsx"],
+        folder_names=["subfolder"],
+    )
+    also_include_folder = utils.mock_list_files_response(
+        file_names=["d.csv", "e.xlsx", "f.pdf"],
+        folder_names=["subfolder"],
+    )
+    include_subfolder = utils.mock_list_files_response(
+        file_names=["b.csv"],
+    )
+    also_include_subfolder = utils.mock_list_files_response(
+        file_names=["g.csv"],
+    )
+
+    if folders in (None, []):
+        side_effect = [
+            root_page,
+            include_folder,
+            also_include_folder,
+            include_subfolder,
+            also_include_subfolder,
+        ]
+    elif folders == ["include"]:
+        side_effect = [
+            include_folder,
+            include_subfolder,
+        ]
+    elif folders == ["include", "also_include"]:
+        side_effect = [
+            include_folder,
+            also_include_folder,
+            include_subfolder,
+            also_include_subfolder,
+        ]
+    else:
+        side_effect = []
 
     with patch(
         "aws_sharepoint_connector.sharepoint.requests.get",
-        side_effect=[root_page, archive_page],
+        side_effect=side_effect,
     ):
-        result = connector.list_files()
-    assert result == ["report.csv", "summary.xlsx"]
+        result = connector.list_files(
+            folders=folders, include_ext=include_ext, exclude_ext=exclude_ext
+        )
+    assert result == expected_files
+
+
+@pytest.mark.parametrize(
+    (
+        "case",
+        "folders",
+        "expected_files",
+        "expected_urls",
+    ),
+    [
+        (
+            "duplicate-seeds",
+            ["folder", "folder"],
+            [
+                "folder/root.csv",
+                "folder/nested/inner.csv",
+                "folder/nested/folder/deep.csv",
+            ],
+            [
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
+            ],
+        ),
+        (
+            "overlap-descendant-first",
+            ["folder/nested/folder", "folder", "folder/nested"],
+            [
+                "folder/nested/folder/deep.csv",
+                "folder/root.csv",
+                "folder/nested/inner.csv",
+            ],
+            [
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
+            ],
+        ),
+        (
+            "overlap-ancestor-first",
+            ["folder", "folder/nested", "folder/nested/folder"],
+            [
+                "folder/root.csv",
+                "folder/nested/inner.csv",
+                "folder/nested/folder/deep.csv",
+            ],
+            [
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
+            ],
+        ),
+    ],
+)
+def test_list_files_seed_traversal_behaviors(
+    case: str,
+    folders: list[str],
+    expected_files: list[str],
+    expected_urls: list[str],
+) -> None:
+    """Seed traversal covers provided order, duplicates, and overlaps."""
+    connector = make_connector()
+
+    folder_page = utils.mock_list_files_response(
+        file_names=["root.csv"],
+        folder_names=["nested"],
+    )
+    nested_page = utils.mock_list_files_response(
+        file_names=["inner.csv"],
+        folder_names=["folder"],
+    )
+    nested_folder_page = utils.mock_list_files_response(file_names=["deep.csv"])
+
+    if case == "duplicate-seeds":
+        side_effect = [folder_page, nested_page, nested_folder_page]
+    elif case == "overlap-descendant-first":
+        side_effect = [nested_folder_page, folder_page, nested_page]
+    else:
+        side_effect = [folder_page, nested_page, nested_folder_page]
+
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.get",
+        side_effect=side_effect,
+    ) as mock_get:
+        result = connector.list_files(folders=folders)
+
+    assert result == expected_files
+    actual_urls = [call_args.args[0] for call_args in mock_get.call_args_list]
+    assert actual_urls == expected_urls
+    assert len(actual_urls) == len(set(actual_urls))
 
 
 def test_list_files_pagination() -> None:
