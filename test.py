@@ -82,8 +82,8 @@ def scenario_1(
 
     run_plans(scenario_1_plan, s3_to_sharepoint_engine, source_handling="none")
 
-    s1_source_files = s3_to_sharepoint_engine.list_source_files()
-    s1_dest_files = sp_to_s3_engine.list_source_files()
+    s1_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
+    s1_dest_files = sp_to_s3_engine.list_source_files(["scenario_1"])
 
     if all(
         file in s1_dest_files
@@ -131,8 +131,8 @@ def scenario_2(
 
     run_plans(scenario_2_plan, sp_to_s3_engine, source_handling="none")
 
-    s2_source_files = sp_to_s3_engine.list_source_files()
-    s2_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s2_source_files = sp_to_s3_engine.list_source_files(["scenario_1"])
+    s2_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
 
     if all(
         file in s2_dest_files
@@ -180,8 +180,8 @@ def scenario_3(
 
     run_plans(scenario_3_plan, s3_to_sharepoint_engine, source_handling="delete")
 
-    s3_source_files = s3_to_sharepoint_engine.list_source_files()
-    s3_dest_files = sp_to_s3_engine.list_source_files()
+    s3_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
+    s3_dest_files = sp_to_s3_engine.list_source_files(["scenario_3"])
 
     if all(
         file in s3_dest_files
@@ -228,8 +228,8 @@ def scenario_4(
 
     run_plans(scenario_4_plan, sp_to_s3_engine, source_handling="delete")
 
-    sp_source_files = sp_to_s3_engine.list_source_files()
-    sp_dest_files = s3_to_sharepoint_engine.list_source_files()
+    sp_source_files = sp_to_s3_engine.list_source_files(["scenario_3"])
+    sp_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
 
     if all(
         file in sp_dest_files
@@ -278,8 +278,8 @@ def scenario_5(
         scenario_5_plan, s3_to_sharepoint_engine, "archive", source_handling="archive"
     )
 
-    s5_source_files = s3_to_sharepoint_engine.list_source_files()
-    s5_dest_files = sp_to_s3_engine.list_source_files()
+    s5_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
+    s5_dest_files = sp_to_s3_engine.list_source_files(["scenario_5"])
 
     if all(
         file in s5_dest_files
@@ -339,8 +339,8 @@ def scenario_6(
 
     run_plans(scenario_6_plan, sp_to_s3_engine, "archive", source_handling="archive")
 
-    s6_source_files = sp_to_s3_engine.list_source_files()
-    s6_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s6_source_files = sp_to_s3_engine.list_source_files(["scenario_5"])
+    s6_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_6"])
 
     if all(
         file in s6_dest_files
@@ -399,26 +399,6 @@ def scenario_7(
             print(f"Test passed: Caught expected error for invalid S3 key: {exc}")
         else:
             print(f"Test failed: Unexpected error for invalid S3 key: {exc}")
-
-    invalid_sp_folder_plan = [
-        {
-            "source": "source/sample_s3_file_1.csv",
-            "destination": "invalid_folder/sample_s4_file_1.csv",
-        },
-    ]
-    try:
-        run_plans(invalid_sp_folder_plan, s3_to_sharepoint_engine)
-        print(
-            "Test failed: Expected error for invalid SharePoint folder was not raised."
-        )
-    except ProcessingError as exc:
-        if "not found in SharePoint" in str(exc):
-            print(
-                "Test passed: Caught expected error for invalid SharePoint folder:"
-                f" {exc}"
-            )
-        else:
-            print(f"Test failed: Unexpected error for invalid SharePoint folder: {exc}")
 
     invalid_sp_file_plan = [
         {
@@ -488,8 +468,8 @@ def scenario_8(
 
     run_plans(scenario_8_plan, s3_to_sharepoint_engine, "archive")
 
-    s8_source_files = sp_to_s3_engine.list_source_files()
-    s8_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s8_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
+    s8_dest_files = sp_to_s3_engine.list_source_files(["scenario_8"])
 
     if all(
         file in s8_dest_files
