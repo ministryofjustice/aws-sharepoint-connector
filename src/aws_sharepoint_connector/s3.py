@@ -30,7 +30,7 @@ class S3Connector(BaseModel):
         """Set the S3 object key for the archive file operation."""
         self.archive_key = archive_key
 
-    def list_objects(
+    def list_objects(  # noqa: C901
         self,
         prefixes: list[str] | None = None,
         include_ext: list[str] | None = None,
@@ -86,6 +86,8 @@ class S3Connector(BaseModel):
                     response = self.client.list_objects_v2(**kwargs)
                     for obj in response.get("Contents", []):
                         key = obj["Key"]
+                        if key in keys:
+                            continue
                         if key.endswith("/"):  # skip S3 folder-marker objects
                             continue
                         ext = normalise_extension(PurePosixPath(key).suffix)

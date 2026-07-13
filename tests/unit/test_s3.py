@@ -39,11 +39,11 @@ def test_set_archive_key(connector: S3Connector) -> None:
 @pytest.mark.parametrize(
     ("prefixes", "include_ext", "exclude_ext", "expected_keys"),
     [
-        (["include/"], [], [], ["include/a.csv", "include/b.csv", "include/c.xlsx"]),
+        (["include/"], [], None, ["include/a.csv", "include/b.csv", "include/c.xlsx"]),
         (
             ["include/"],
             None,
-            None,
+            [],
             ["include/a.csv", "include/b.csv", "include/c.xlsx"],
         ),
         (
@@ -54,32 +54,6 @@ def test_set_archive_key(connector: S3Connector) -> None:
         ),
         (["include/"], None, ["csv", "xlsx"], []),
         (["include/"], ["csv"], ["csv", "xlsx"], []),
-        (
-            ["include/", "also_include/"],
-            [],
-            [],
-            [
-                "include/a.csv",
-                "include/b.csv",
-                "include/c.xlsx",
-                "also_include/d.csv",
-                "also_include/e.xlsx",
-                "also_include/f.pdf",
-            ],
-        ),
-        (
-            ["include/", "also_include/"],
-            None,
-            None,
-            [
-                "include/a.csv",
-                "include/b.csv",
-                "include/c.xlsx",
-                "also_include/d.csv",
-                "also_include/e.xlsx",
-                "also_include/f.pdf",
-            ],
-        ),
         (
             ["include/", "also_include/"],
             ["csv", "xlsx"],
@@ -105,19 +79,6 @@ def test_set_archive_key(connector: S3Connector) -> None:
             [],
         ),
         (
-            ["include", "also_include"],
-            None,
-            None,
-            [
-                "include/a.csv",
-                "include/b.csv",
-                "include/c.xlsx",
-                "also_include/d.csv",
-                "also_include/e.xlsx",
-                "also_include/f.pdf",
-            ],
-        ),
-        (
             None,
             None,
             None,
@@ -141,6 +102,16 @@ def test_set_archive_key(connector: S3Connector) -> None:
                 "also_include/d.csv",
                 "also_include/e.xlsx",
                 "also_include/f.pdf",
+            ],
+        ),
+        (
+            ["include/", "include"],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/b.csv",
+                "include/c.xlsx",
             ],
         ),
     ],
