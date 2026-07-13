@@ -444,6 +444,25 @@ def test_check_bucket_exists_not_found(
         connector.check_bucket_exists()
 
 
+def test_check_bucket_exists_no_such_bucket_code(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """NoSuchBucket should map to a clear does-not-exist ProcessingError."""
+    utils.create_bucket(S3_BUCKET, s3)
+    with (
+        patch.object(
+            s3,
+            "head_bucket",
+            side_effect=ClientError(
+                {"Error": {"Code": "NoSuchBucket", "Message": "not found"}},
+                "HeadBucket",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="S3 bucket does not exist"),
+    ):
+        connector.check_bucket_exists()
+
+
 def test_check_bucket_exists_access_denied(
     connector: S3Connector, s3: boto3.client
 ) -> None:
@@ -508,6 +527,26 @@ def test_check_object_exists_not_found(
     utils.create_bucket(S3_BUCKET, s3)
     connector.set_key("missing/key.csv")
     with pytest.raises(ProcessingError, match="does not exist"):
+        connector.check_object_exists()
+
+
+def test_check_object_exists_no_such_key_code(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """NoSuchKey should map to a clear does-not-exist ProcessingError."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector.set_key(S3_KEY)
+    with (
+        patch.object(
+            s3,
+            "head_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "not found"}},
+                "HeadObject",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="S3 object does not exist"),
+    ):
         connector.check_object_exists()
 
 

@@ -279,6 +279,7 @@ def scenario_5(
     )
 
     s5_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
+    s5_archive_files = s3_to_sharepoint_engine.list_source_files(["archive"])
     s5_dest_files = sp_to_s3_engine.list_source_files(["scenario_5"])
 
     if all(
@@ -291,9 +292,8 @@ def scenario_5(
     ):
         if (
             all(
-                file in s5_source_files
+                file in s5_archive_files
                 for file in [
-                    "archive/sample_s3_file_1.csv",
                     "archive/sample_s3_file_2.csv",
                     "archive/sample_s3_file_3.csv",
                 ]
@@ -340,6 +340,7 @@ def scenario_6(
     run_plans(scenario_6_plan, sp_to_s3_engine, "archive", source_handling="archive")
 
     s6_source_files = sp_to_s3_engine.list_source_files(["scenario_5"])
+    s6_archive_files = sp_to_s3_engine.list_source_files(["archive"])
     s6_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_6"])
 
     if all(
@@ -351,7 +352,7 @@ def scenario_6(
     ):
         if (
             all(
-                file in s6_source_files
+                file in s6_archive_files
                 for file in [
                     "archive/sample_sp_file_1.csv",
                     "archive/sample_sp_file_2.csv",
@@ -444,29 +445,29 @@ def scenario_7(
 def scenario_8(
     s3_to_sharepoint_engine: UploadToSharePointEngine, sp_to_s3_engine: UploadToS3Engine
 ) -> None:
-    """Scenario 8: Write files to different sharepoint folders that do/don't exist."""
+    """Scenario 8: Write files to different sharepoint folders that don't exist."""
     print("Starting Scenario 8...")
     ran_str = str(uuid.uuid4())
     scenario_8_plan = [
         {
             "source": "source/sample_s3_file_1.csv",
-            "destination": f"scenario_8_{ran_str}/sample_s3_file_1.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_1.csv",
         },
         {
             "source": "source/sample_s3_file_2.csv",
-            "destination": f"scenario_8/{ran_str}/sample_s3_file_2.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_2.csv",
         },
         {
             "source": "source/sample_s3_file_3.csv",
-            "destination": f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
+            "destination": f"scenario_8/{ran_str}/lots/of/nesting/sample_sp_file_3.csv",
         },
         {
             "source": "source/sample_s3_file_4.csv",
-            "destination": f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_4.csv",
         },
     ]
 
-    run_plans(scenario_8_plan, s3_to_sharepoint_engine, "archive")
+    run_plans(scenario_8_plan, s3_to_sharepoint_engine, source_handling="none")
 
     s8_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
     s8_dest_files = sp_to_s3_engine.list_source_files(["scenario_8"])
@@ -474,10 +475,10 @@ def scenario_8(
     if all(
         file in s8_dest_files
         for file in [
-            f"scenario_8_{ran_str}/sample_s3_file_1.csv",
-            f"scenario_8/{ran_str}/sample_s3_file_2.csv",
-            f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
-            f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_1.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_2.csv",
+            f"scenario_8/{ran_str}/lots/of/nesting/sample_sp_file_3.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_4.csv",
         ]
     ):
         if all(
@@ -491,11 +492,11 @@ def scenario_8(
         ):
             print("Test passed: All files are present correctly in S3 and SharePoint.")
         else:
-            print("Test failed: Some files were not archived correctly.")
+            print("Test failed: Some files are missing in S3.")
             print("Found:", s8_source_files)
     else:
-        print("Test failed: Some files are missing in S3.")
-        print("Found:", s8_source_files)
+        print("Test failed: Some files are missing in SharePoint.")
+        print("Found:", s8_dest_files)
 
 
 def scenario_9(

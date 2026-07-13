@@ -1,6 +1,6 @@
 """Unit tests for utility helpers in connector.utils."""
 
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 import requests
@@ -71,6 +71,48 @@ def test_request_with_retry_retries_on_retryable_status_code() -> None:
     assert response.status_code == 200
     assert mock_get.call_count == 2
     mock_sleep.assert_called_once_with(0.5)
+
+
+def test_request_with_retry_uses_incremental_backoff_on_multiple_retries() -> None:
+    """Backoff should increment per retry attempt for retryable status codes."""
+    retry_code = next(iter(RETRYABLE_ERROR_CODES))
+    with (
+        patch(
+            "aws_sharepoint_connector.utils.requests.get",
+            side_effect=[
+                _response(retry_code),
+                _response(retry_code),
+                _response(200),
+            ],
+        ) as mock_get,
+        patch("aws_sharepoint_connector.utils.time.sleep") as mock_sleep,
+    ):
+        response = utils.request_with_retry(
+            "GET", "https://example.com", max_attempts=3
+        )
+
+    assert response.status_code == 200
+    assert mock_get.call_count == 3
+    assert mock_sleep.call_args_list == [call(0.5), call(1.0)]
+
+
+def test_request_with_retry_single_attempt_does_not_sleep() -> None:
+    """No backoff should occur when only one attempt is allowed."""
+    retry_code = next(iter(RETRYABLE_ERROR_CODES))
+    with (
+        patch(
+            "aws_sharepoint_connector.utils.requests.get",
+            return_value=_response(retry_code),
+        ) as mock_get,
+        patch("aws_sharepoint_connector.utils.time.sleep") as mock_sleep,
+    ):
+        response = utils.request_with_retry(
+            "GET", "https://example.com", max_attempts=1
+        )
+
+    assert response.status_code == retry_code
+    assert mock_get.call_count == 1
+    mock_sleep.assert_not_called()
 
 
 def test_request_with_retry_returns_immediately_on_non_retryable_error_code() -> None:
@@ -156,6 +198,24 @@ def test_validate_remote_path_accepts_relative_paths() -> None:
 def test_validate_remote_path_allows_empty_when_permitted() -> None:
     """An empty path is allowed only when allow_empty is set."""
     utils.validate_path("", "archive_folder", allow_empty=True)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_message"),
+    [
+        ("", "source must be a non-empty path"),
+        ("/abs/path.csv", "source must be a relative path"),
+        ("reports/../../etc/passwd", "source must not contain '..'"),
+        ("reports\\2026\\file.csv", "source must use '/' as the path separator"),
+        ("reports/2026/file\x01.csv", "source contains invalid control characters"),
+    ],
+)
+def test_validate_remote_path_error_messages_include_field_name(
+    path: str, expected_message: str
+) -> None:
+    """Validation errors should include field context and failure reason."""
+    with pytest.raises(exceptions.InvalidPathError, match=expected_message):
+        utils.validate_path(path, "source")
 
 
 @pytest.mark.parametrize(
