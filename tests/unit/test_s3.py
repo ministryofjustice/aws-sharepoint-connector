@@ -37,30 +37,147 @@ def test_set_archive_key(connector: S3Connector) -> None:
 
 
 @pytest.mark.parametrize(
-    ("prefix", "expected_keys"),
+    ("prefixes", "include_ext", "exclude_ext", "expected_keys"),
     [
-        ("include/", ["include/a.csv", "include/b.csv"]),
-        ("", ["exclude/b.csv", "include/a.csv", "include/b.csv"]),
+        (["include/"], [], None, ["include/a.csv", "include/b.csv", "include/c.xlsx"]),
+        (
+            ["include/"],
+            None,
+            [],
+            ["include/a.csv", "include/b.csv", "include/c.xlsx"],
+        ),
+        (
+            ["include/"],
+            ["csv", "xlsx"],
+            None,
+            ["include/a.csv", "include/b.csv", "include/c.xlsx"],
+        ),
+        (["include/"], None, ["csv", "xlsx"], []),
+        (["include/"], ["csv"], ["csv", "xlsx"], []),
+        (
+            ["include/", "also_include/"],
+            ["csv", "xlsx"],
+            None,
+            [
+                "include/a.csv",
+                "include/b.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+            ],
+        ),
+        (
+            ["include/", "also_include/"],
+            None,
+            ["csv", "xlsx"],
+            ["also_include/f.pdf"],
+        ),
+        (
+            ["include/", "also_include/"],
+            ["csv"],
+            ["csv", "xlsx"],
+            [],
+        ),
+        (
+            None,
+            None,
+            None,
+            [
+                "include/a.csv",
+                "include/b.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+            ],
+        ),
+        (
+            [],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/b.csv",
+                "include/c.xlsx",
+                "also_include/d.csv",
+                "also_include/e.xlsx",
+                "also_include/f.pdf",
+            ],
+        ),
+        (
+            ["include/", "include"],
+            [],
+            [],
+            [
+                "include/a.csv",
+                "include/b.csv",
+                "include/c.xlsx",
+            ],
+        ),
     ],
 )
-def test_list_objects_success(
-    prefix: str, expected_keys: list[str], connector: S3Connector, s3: boto3.client
+def test_list_objects_success(  # noqa: PLR0913
+    prefixes: list[str] | None,
+    include_ext: list[str] | None,
+    exclude_ext: list[str] | None,
+    expected_keys: list[str],
+    connector: S3Connector,
+    s3: boto3.client,
 ) -> None:
     """list_objects returns all keys in the bucket."""
     utils.create_bucket(S3_BUCKET, s3)
     utils.create_bucket("excluded-bucket", s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/b.csv", Body=b"data")
-    s3.put_object(Bucket=S3_BUCKET, Key="exclude/b.csv", Body=b"data")
-    s3.put_object(Bucket="excluded-bucket", Key="should/not/appear.csv", Body=b"data")
-    assert sorted(connector.list_objects(prefix)) == expected_keys
+    s3.put_object(Bucket=S3_BUCKET, Key="include/c.xlsx", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="also_include/d.csv", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="also_include/e.xlsx", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="also_include/f.pdf", Body=b"data")
+    s3.put_object(Bucket="excluded-bucket", Key="should/never/appear.csv", Body=b"data")
+    assert sorted(
+        connector.list_objects(
+            prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+        )
+    ) == sorted(expected_keys)
 
 
 def test_list_objects_empty_bucket(connector: S3Connector, s3: boto3.client) -> None:
     """list_objects returns an empty list for a bucket with no objects."""
     utils.create_bucket(S3_BUCKET, s3)
     connector = S3Connector(client=s3, bucket=S3_BUCKET)
-    assert connector.list_objects() == []
+    assert not connector.list_objects()
+
+
+def test_list_objects_skips_folder_markers(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """list_objects excludes zero-byte S3 folder-marker keys ending in '/'."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/", Body=b"")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+    assert connector.list_objects() == ["include/a.csv"]
+
+
+def test_list_objects_extension_filter_is_case_insensitive(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """list_objects matches extensions regardless of case."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.CSV", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/b.Xlsx", Body=b"data")
+    assert connector.list_objects(include_ext=[".csv"]) == ["include/a.CSV"]
+
+
+def test_list_objects_key_without_extension(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """A key with no extension is excluded by include and kept by exclude filters."""
+    utils.create_bucket(S3_BUCKET, s3)
+    s3.put_object(Bucket=S3_BUCKET, Key="include/README", Body=b"data")
+    s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+
+    assert connector.list_objects(include_ext=["csv"]) == ["include/a.csv"]
+    assert connector.list_objects(exclude_ext=["csv"]) == ["include/README"]
 
 
 def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> None:
@@ -76,13 +193,13 @@ def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> No
         "ResponseMetadata": {},
     }
     page2 = {
-        "Contents": [{"Key": "include/d.csv"}],
+        "Contents": [{"Key": "include/c.csv"}],
         "IsTruncated": False,
         "ResponseMetadata": {},
     }
     with patch.object(s3, "list_objects_v2", side_effect=[page1, page2]):
         keys = connector.list_objects()
-    assert keys == ["include/a.csv", "include/b.csv", "include/d.csv"]
+    assert keys == ["include/a.csv", "include/b.csv", "include/c.csv"]
 
 
 @pytest.mark.parametrize(
@@ -327,6 +444,25 @@ def test_check_bucket_exists_not_found(
         connector.check_bucket_exists()
 
 
+def test_check_bucket_exists_no_such_bucket_code(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """NoSuchBucket should map to a clear does-not-exist ProcessingError."""
+    utils.create_bucket(S3_BUCKET, s3)
+    with (
+        patch.object(
+            s3,
+            "head_bucket",
+            side_effect=ClientError(
+                {"Error": {"Code": "NoSuchBucket", "Message": "not found"}},
+                "HeadBucket",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="S3 bucket does not exist"),
+    ):
+        connector.check_bucket_exists()
+
+
 def test_check_bucket_exists_access_denied(
     connector: S3Connector, s3: boto3.client
 ) -> None:
@@ -391,6 +527,26 @@ def test_check_object_exists_not_found(
     utils.create_bucket(S3_BUCKET, s3)
     connector.set_key("missing/key.csv")
     with pytest.raises(ProcessingError, match="does not exist"):
+        connector.check_object_exists()
+
+
+def test_check_object_exists_no_such_key_code(
+    connector: S3Connector, s3: boto3.client
+) -> None:
+    """NoSuchKey should map to a clear does-not-exist ProcessingError."""
+    utils.create_bucket(S3_BUCKET, s3)
+    connector.set_key(S3_KEY)
+    with (
+        patch.object(
+            s3,
+            "head_object",
+            side_effect=ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "not found"}},
+                "HeadObject",
+            ),
+        ),
+        pytest.raises(ProcessingError, match="S3 object does not exist"),
+    ):
         connector.check_object_exists()
 
 

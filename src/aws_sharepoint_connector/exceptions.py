@@ -35,3 +35,7 @@ class IncorrectObjectTypeError(Exception):
 
 class NoFileSizeError(Exception):
     """Raised when the object does not have a file type in the expected place."""
+
+
+class InvalidPathError(Exception):
+    """Raised when a remote S3 or SharePoint path is invalid or unsafe."""

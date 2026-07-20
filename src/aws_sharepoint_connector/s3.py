@@ -1,12 +1,13 @@
 """S3 connector for handling interactions with Amazon S3."""
 
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
 
 from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
-from aws_sharepoint_connector.utils import setup_logger
+from aws_sharepoint_connector.utils import normalise_extension, setup_logger
 
 log = setup_logger()
 
@@ -29,39 +30,85 @@ class S3Connector(BaseModel):
         """Set the S3 object key for the archive file operation."""
         self.archive_key = archive_key
 
-    def list_objects(self, prefix: str = "") -> list[str]:
-        """List all object keys in the S3 bucket, optionally filtered by prefix.
+    def list_objects(  # noqa: C901
+        self,
+        prefixes: list[str] | None = None,
+        include_ext: list[str] | None = None,
+        exclude_ext: list[str] | None = None,
+    ) -> list[str]:
+        """List all object keys in the S3 bucket.
 
-        Handles pagination automatically; all matching keys are returned regardless
-        of bucket size.
+        Handles pagination automatically and can be filtered to include specific
+        prefixes. Set include_ext to restrict to only certain file types and exclude_ext
+        to filter out certain file types.
 
         Args:
-            prefix (str): Optional key prefix to filter results
-                (e.g. ``"reports/2026/"``). Defaults to ``""`` (list all objects).
+            prefixes (list[str]): Optional key prefixes to filter results
+                (e.g. ``["reports/2026/"]``). Defaults to ``None`` (list all objects).
+            include_ext (list[str] | None): Optional list of file extensions to include
+                (e.g. ``[".csv", ".json"]``).
+            exclude_ext (list[str] | None): Optional list of file extensions to exclude
+                (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All object keys in the bucket matching the given prefix.
+            list[str]: All object keys in the bucket matching any specified filters.
 
         Raises:
             ProcessingError: If the listing request fails.
 
         """
-        log.info("Listing objects in s3://%s/%s...", self.bucket, prefix)
+        log.info(
+            "Listing objects in s3://%s/ for the following prefixes: %s",
+            self.bucket,
+            ", ".join(prefixes or ""),
+        )
+
+        include_ext = (
+            [normalise_extension(ext) for ext in include_ext] if include_ext else []
+        )
+        exclude_ext = (
+            [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
+        )
+
         keys: list[str] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket}
-        if prefix:
-            kwargs["Prefix"] = prefix
-        try:
-            while True:
-                response = self.client.list_objects_v2(**kwargs)
-                keys.extend(obj["Key"] for obj in response.get("Contents", []))
-                if not response.get("IsTruncated"):
-                    break
-                kwargs["ContinuationToken"] = response["NextContinuationToken"]
-        except (BotoCoreError, ClientError) as exc:
-            err = f"Failed to list objects in s3://{self.bucket}: {exc}"
-            raise ProcessingError(err) from exc
-        log.info("Found %d object(s) in s3://%s/%s.", len(keys), self.bucket, prefix)
+
+        # Use a sentinel prefix to run a single unscoped list operation when callers
+        # do not pass explicit prefixes.
+        prefixes = prefixes or ["."]
+
+        for prefix in prefixes:
+            if prefix != ".":
+                kwargs["Prefix"] = prefix
+
+            try:
+                while True:
+                    response = self.client.list_objects_v2(**kwargs)
+                    for obj in response.get("Contents", []):
+                        key = obj["Key"]
+                        if key in keys:
+                            continue
+                        if key.endswith("/"):  # skip S3 folder-marker objects
+                            continue
+                        ext = normalise_extension(PurePosixPath(key).suffix)
+                        if include_ext and ext not in include_ext:
+                            continue
+                        if exclude_ext and ext in exclude_ext:
+                            continue
+                        keys.append(key)
+                    if not response.get("IsTruncated"):
+                        break
+                    kwargs["ContinuationToken"] = response["NextContinuationToken"]
+            except (BotoCoreError, ClientError) as exc:
+                err = f"Failed to list objects in s3://{self.bucket}: {exc}"
+                raise ProcessingError(err) from exc
+
+        log.info(
+            "Found %d object(s) in s3://%s/ for the following prefixes: %s",
+            len(keys),
+            self.bucket,
+            ", ".join(prefixes),
+        )
         return keys
 
     def download_from_s3(self) -> bytes:

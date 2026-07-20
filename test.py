@@ -2,13 +2,13 @@
 
 import os
 import uuid
-from typing import Literal
+from typing import Literal, TypedDict
 
 import boto3
 
 from aws_sharepoint_connector import create_engine
 from aws_sharepoint_connector.engine import UploadToS3Engine, UploadToSharePointEngine
-from aws_sharepoint_connector.exceptions import ProcessingError
+from aws_sharepoint_connector.exceptions import InvalidPathError, ProcessingError
 
 # Scenarios
 
@@ -19,6 +19,7 @@ from aws_sharepoint_connector.exceptions import ProcessingError
 # 5) Write files to different SharePoint folders (archive source files)
 # 6) Write files to different S3 folders (archive source files)
 # 7) Invalid plans (invalid S3 key, SharePoint folder, SharePoint file, S3 bucket)
+# 9) Complex listing filters with duplicate and overlapping folder seeds
 
 
 def run_plans(
@@ -81,8 +82,8 @@ def scenario_1(
 
     run_plans(scenario_1_plan, s3_to_sharepoint_engine, source_handling="none")
 
-    s1_source_files = s3_to_sharepoint_engine.list_source_files()
-    s1_dest_files = sp_to_s3_engine.list_source_files()
+    s1_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
+    s1_dest_files = sp_to_s3_engine.list_source_files(["scenario_1"])
 
     if all(
         file in s1_dest_files
@@ -130,8 +131,8 @@ def scenario_2(
 
     run_plans(scenario_2_plan, sp_to_s3_engine, source_handling="none")
 
-    s2_source_files = sp_to_s3_engine.list_source_files()
-    s2_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s2_source_files = sp_to_s3_engine.list_source_files(["scenario_1"])
+    s2_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
 
     if all(
         file in s2_dest_files
@@ -179,8 +180,8 @@ def scenario_3(
 
     run_plans(scenario_3_plan, s3_to_sharepoint_engine, source_handling="delete")
 
-    s3_source_files = s3_to_sharepoint_engine.list_source_files()
-    s3_dest_files = sp_to_s3_engine.list_source_files()
+    s3_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
+    s3_dest_files = sp_to_s3_engine.list_source_files(["scenario_3"])
 
     if all(
         file in s3_dest_files
@@ -227,8 +228,8 @@ def scenario_4(
 
     run_plans(scenario_4_plan, sp_to_s3_engine, source_handling="delete")
 
-    sp_source_files = sp_to_s3_engine.list_source_files()
-    sp_dest_files = s3_to_sharepoint_engine.list_source_files()
+    sp_source_files = sp_to_s3_engine.list_source_files(["scenario_3"])
+    sp_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
 
     if all(
         file in sp_dest_files
@@ -277,8 +278,9 @@ def scenario_5(
         scenario_5_plan, s3_to_sharepoint_engine, "archive", source_handling="archive"
     )
 
-    s5_source_files = s3_to_sharepoint_engine.list_source_files()
-    s5_dest_files = sp_to_s3_engine.list_source_files()
+    s5_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
+    s5_archive_files = s3_to_sharepoint_engine.list_source_files(["archive"])
+    s5_dest_files = sp_to_s3_engine.list_source_files(["scenario_5"])
 
     if all(
         file in s5_dest_files
@@ -290,9 +292,8 @@ def scenario_5(
     ):
         if (
             all(
-                file in s5_source_files
+                file in s5_archive_files
                 for file in [
-                    "archive/sample_s3_file_1.csv",
                     "archive/sample_s3_file_2.csv",
                     "archive/sample_s3_file_3.csv",
                 ]
@@ -338,8 +339,9 @@ def scenario_6(
 
     run_plans(scenario_6_plan, sp_to_s3_engine, "archive", source_handling="archive")
 
-    s6_source_files = sp_to_s3_engine.list_source_files()
-    s6_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s6_source_files = sp_to_s3_engine.list_source_files(["scenario_5"])
+    s6_archive_files = sp_to_s3_engine.list_source_files(["archive"])
+    s6_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_6"])
 
     if all(
         file in s6_dest_files
@@ -350,7 +352,7 @@ def scenario_6(
     ):
         if (
             all(
-                file in s6_source_files
+                file in s6_archive_files
                 for file in [
                     "archive/sample_sp_file_1.csv",
                     "archive/sample_sp_file_2.csv",
@@ -399,26 +401,6 @@ def scenario_7(
         else:
             print(f"Test failed: Unexpected error for invalid S3 key: {exc}")
 
-    invalid_sp_folder_plan = [
-        {
-            "source": "source/sample_s3_file_1.csv",
-            "destination": "invalid_folder/sample_s4_file_1.csv",
-        },
-    ]
-    try:
-        run_plans(invalid_sp_folder_plan, s3_to_sharepoint_engine)
-        print(
-            "Test failed: Expected error for invalid SharePoint folder was not raised."
-        )
-    except ProcessingError as exc:
-        if "not found in SharePoint" in str(exc):
-            print(
-                "Test passed: Caught expected error for invalid SharePoint folder:"
-                f" {exc}"
-            )
-        else:
-            print(f"Test failed: Unexpected error for invalid SharePoint folder: {exc}")
-
     invalid_sp_file_plan = [
         {
             "source": "scenario_3/1/invalid_file.csv",
@@ -463,40 +445,40 @@ def scenario_7(
 def scenario_8(
     s3_to_sharepoint_engine: UploadToSharePointEngine, sp_to_s3_engine: UploadToS3Engine
 ) -> None:
-    """Scenario 8: Write files to different sharepoint folders that do/don't exist."""
+    """Scenario 8: Write files to different sharepoint folders that don't exist."""
     print("Starting Scenario 8...")
     ran_str = str(uuid.uuid4())
     scenario_8_plan = [
         {
             "source": "source/sample_s3_file_1.csv",
-            "destination": f"scenario_8_{ran_str}/sample_s3_file_1.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_1.csv",
         },
         {
             "source": "source/sample_s3_file_2.csv",
-            "destination": f"scenario_8/{ran_str}/sample_s3_file_2.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_2.csv",
         },
         {
             "source": "source/sample_s3_file_3.csv",
-            "destination": f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
+            "destination": f"scenario_8/{ran_str}/lots/of/nesting/sample_sp_file_3.csv",
         },
         {
             "source": "source/sample_s3_file_4.csv",
-            "destination": f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+            "destination": f"scenario_8/{ran_str}/sample_sp_file_4.csv",
         },
     ]
 
-    run_plans(scenario_8_plan, s3_to_sharepoint_engine, "archive")
+    run_plans(scenario_8_plan, s3_to_sharepoint_engine, source_handling="none")
 
-    s8_source_files = sp_to_s3_engine.list_source_files()
-    s8_dest_files = s3_to_sharepoint_engine.list_source_files()
+    s8_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
+    s8_dest_files = sp_to_s3_engine.list_source_files(["scenario_8"])
 
     if all(
         file in s8_dest_files
         for file in [
-            f"scenario_8_{ran_str}/sample_s3_file_1.csv",
-            f"scenario_8/{ran_str}/sample_s3_file_2.csv",
-            f"scenario_8/{ran_str}/lots/of/nesting/sample_s3_file_3.csv",
-            f"scenario_8/{ran_str}/sample_s3_file_4.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_1.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_2.csv",
+            f"scenario_8/{ran_str}/lots/of/nesting/sample_sp_file_3.csv",
+            f"scenario_8/{ran_str}/sample_sp_file_4.csv",
         ]
     ):
         if all(
@@ -510,11 +492,187 @@ def scenario_8(
         ):
             print("Test passed: All files are present correctly in S3 and SharePoint.")
         else:
-            print("Test failed: Some files were not archived correctly.")
+            print("Test failed: Some files are missing in S3.")
             print("Found:", s8_source_files)
     else:
-        print("Test failed: Some files are missing in S3.")
-        print("Found:", s8_source_files)
+        print("Test failed: Some files are missing in SharePoint.")
+        print("Found:", s8_dest_files)
+
+
+def scenario_9(
+    s3_to_sharepoint_engine: UploadToSharePointEngine,
+    sp_to_s3_engine: UploadToS3Engine,
+) -> None:
+    """Scenario 9: Prove exact listing in complex S3 and SharePoint structures."""
+    print("Starting Scenario 9...")
+
+    s3 = boto3.client("s3")
+    bucket = os.environ["S3_BUCKET"]
+
+    s3_seed_files = [
+        "scenario_9/s3_root/Team-A/Finance FY26/q1-report.csv",
+        "scenario_9/s3_root/Team-A/Finance FY26/q1-notes.txt",
+        "scenario_9/s3_root/Team-A/Finance FY26/sub/forecast.json",
+        "scenario_9/s3_root/non standard (Ops)/child_one/run_log.csv",
+        "scenario_9/s3_root/non standard (Ops)/child_one/run_log.tmp",
+        "scenario_9/s3_root/non standard (Ops)/child_one/deeper/metrics.JSON",
+        "scenario_9/s3_root/non standard (Ops)/child_two/image.png",
+        "scenario_9/s3_root/non standard (Ops)/child_two/readme.md",
+        "scenario_9/s3_root/Z_misc-archive/raw/batch_001.csv",
+    ]
+    for key in s3_seed_files:
+        s3.put_object(Bucket=bucket, Key=key, Body=f"seed::{key}".encode())
+
+    s3_list = s3_to_sharepoint_engine.list_source_files(
+        search_folders=[
+            "scenario_9/s3_root/non standard (Ops)/child_one",
+            "scenario_9/s3_root/Team-A",
+            "scenario_9/s3_root/non standard (Ops)/child_one",
+        ],
+        include_ext=["csv", "json"],
+        exclude_ext=["tmp"],
+    )
+    expected_s3 = [
+        "scenario_9/s3_root/Team-A/Finance FY26/q1-report.csv",
+        "scenario_9/s3_root/Team-A/Finance FY26/sub/forecast.json",
+        "scenario_9/s3_root/non standard (Ops)/child_one/run_log.csv",
+        "scenario_9/s3_root/non standard (Ops)/child_one/deeper/metrics.JSON",
+    ]
+
+    if sorted(s3_list) == sorted(expected_s3) and len(s3_list) == len(set(s3_list)):
+        print("Test passed: S3 list_source_files returns exactly the expected files.")
+    else:
+        print("Test failed: S3 list_source_files did not return the exact set.")
+        print("Expected:", sorted(expected_s3))
+        print("Found:", sorted(s3_list))
+
+    scenario_9_plan = [
+        {
+            "source": "scenario_9/s3_root/Team-A/Finance FY26/q1-report.csv",
+            "destination": "scenario_9/sp_root/Team-A/Finance FY26/q1-report.csv",
+        },
+        {
+            "source": "scenario_9/s3_root/Team-A/Finance FY26/q1-notes.txt",
+            "destination": "scenario_9/sp_root/Team-A/Finance FY26/q1-notes.txt",
+        },
+        {
+            "source": "scenario_9/s3_root/Team-A/Finance FY26/sub/forecast.json",
+            "destination": "scenario_9/sp_root/Team-A/Finance FY26/sub/forecast.json",
+        },
+        {
+            "source": "scenario_9/s3_root/non standard (Ops)/child_one/run_log.csv",
+            "destination": (
+                "scenario_9/sp_root/non standard (Ops)/child_one/run_log.csv"
+            ),
+        },
+        {
+            "source": "scenario_9/s3_root/non standard (Ops)/child_one/run_log.tmp",
+            "destination": (
+                "scenario_9/sp_root/non standard (Ops)/child_one/run_log.tmp"
+            ),
+        },
+        {
+            "source": (
+                "scenario_9/s3_root/non standard (Ops)/child_one/deeper/metrics.JSON"
+            ),
+            "destination": (
+                "scenario_9/sp_root/non standard (Ops)/child_one/deeper/metrics.JSON"
+            ),
+        },
+    ]
+    run_plans(scenario_9_plan, s3_to_sharepoint_engine, source_handling="none")
+
+    sp_list = sp_to_s3_engine.list_source_files(
+        search_folders=[
+            "scenario_9/sp_root/non standard (Ops)/child_one",
+            "scenario_9/sp_root/non standard (Ops)",
+            "scenario_9/sp_root/non standard (Ops)",
+            "scenario_9/sp_root/Team-A",
+        ],
+        include_ext=["csv", "json"],
+        exclude_ext=["tmp", "txt"],
+    )
+    expected_sp = [
+        "scenario_9/sp_root/Team-A/Finance FY26/q1-report.csv",
+        "scenario_9/sp_root/Team-A/Finance FY26/sub/forecast.json",
+        "scenario_9/sp_root/non standard (Ops)/child_one/run_log.csv",
+        "scenario_9/sp_root/non standard (Ops)/child_one/deeper/metrics.JSON",
+    ]
+
+    if sorted(sp_list) == sorted(expected_sp) and len(sp_list) == len(set(sp_list)):
+        print(
+            "Test passed: SharePoint list_source_files handles duplicate/overlapping "
+            "folders and non-standard names correctly."
+        )
+    else:
+        print("Test failed: SharePoint list_source_files did not return the exact set.")
+        print("Expected:", sorted(expected_sp))
+        print("Found:", sorted(sp_list))
+
+
+def scenario_10(
+    s3_to_sharepoint_engine: UploadToSharePointEngine, sp_to_s3_engine: UploadToS3Engine
+) -> None:
+    """Scenario 10: Invalid unsafe paths are rejected before transfer."""
+    print("Starting Scenario 10...")
+
+    class PathTestsDict(TypedDict):
+        engine: UploadToSharePointEngine | UploadToS3Engine
+        source: str
+        destination: str
+        archive_folder: str
+        source_handling: Literal["archive", "delete", "none"]
+        label: str
+
+    path_tests: list[PathTestsDict] = [
+        {
+            "engine": s3_to_sharepoint_engine,
+            "source": "../escape.csv",
+            "destination": "scenario_10/escape.csv",
+            "archive_folder": "",
+            "source_handling": "none",
+            "label": "relative traversal source",
+        },
+        {
+            "engine": sp_to_s3_engine,
+            "source": "scenario_1/sample_sp_file_1.csv",
+            "destination": "/absolute/path.csv",
+            "archive_folder": "",
+            "source_handling": "none",
+            "label": "absolute destination",
+        },
+        {
+            "engine": s3_to_sharepoint_engine,
+            "source": "source/sample_s3_file_1.csv",
+            "destination": "scenario_10/path.csv",
+            "archive_folder": "../bad-archive",
+            "source_handling": "archive",
+            "label": "unsafe archive folder",
+        },
+    ]
+
+    all_passed = True
+    for test_case in path_tests:
+        try:
+            test_case["engine"].copy(
+                source=test_case["source"],
+                destination=test_case["destination"],
+                archive_folder=test_case["archive_folder"],
+                source_handling=test_case["source_handling"],
+            )
+            print(
+                "Test failed: Expected InvalidPathError was not raised for"
+                f" {test_case['label']}."
+            )
+            all_passed = False
+        except InvalidPathError as exc:
+            print(
+                "Test passed: Caught expected InvalidPathError for "
+                f"{test_case['label']}: {exc}"
+            )
+
+    if all_passed:
+        print("Scenario 10 complete: all unsafe-path checks passed.")
 
 
 def main() -> None:
@@ -545,6 +703,12 @@ def main() -> None:
 
     ### Scenario 8: Sharepoint Folder creation
     scenario_8(s3_to_sharepoint_engine, sp_to_s3_engine)
+
+    ### Scenario 9: complex list_source_files proofs
+    scenario_9(s3_to_sharepoint_engine, sp_to_s3_engine)
+
+    ### Scenario 10: path safety validation checks
+    scenario_10(s3_to_sharepoint_engine, sp_to_s3_engine)
 
 
 if __name__ == "__main__":

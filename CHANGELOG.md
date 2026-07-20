@@ -5,14 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.0] - 2026-07-01
+## [1.9.0] - 2026-07-09
+
+### Added
+
+- Added configurable source file listing filters for both engines:
+  - multiple search folders
+  - include extension filters
+  - exclude extension filters
+- Added path-safety validation for transfer inputs (`source`, `destination`, and
+  `archive_folder`) to reject unsafe or invalid paths before any transfer starts.
+
+### Changed
+
+- Refined SharePoint list-files traversal to support folder-scoped listing with
+  duplicate and overlapping folder seeds while preserving deterministic filtering.
+- Standardised extension handling in connectors using shared normalisation helpers.
+- Standardised folder/prefix argument handling by trimming leading and trailing
+  slashes before list operations.
+- Renamed internal list-file argument naming to align on `folders` across engine
+  and connector boundaries.
+
+### Fixed
+
+- Fixed list-files filtering edge cases where mixed folder inputs could produce
+  inconsistent results.
+
+### Tests
+
+- Expanded unit and E2E coverage for S3 and SharePoint listing behaviour,
+  extension filtering, path validation, and complex scenario-based file trees.
+
+## [1.8.1] - 2026-07-09
+
+### Fixed
+
+- Updated list-file fallback prefix handling to avoid placeholder prefix behaviour
+  and ensure valid default listing semantics.
+
+### Tests
+
+- Added regression coverage for the list-file fallback prefix change.
+
+## [1.8.0] - 2026-07-08
+
+### Added
+
+- Added upload-size tolerance support for additional file types (`.docx`,
+  `.xlsx`).
+
+### Tests
+
+- Added test coverage for file-type specific tolerance behaviour.
+
+## [1.7.0] - 2026-07-06
+
+### Added
+
+- Added conditional SharePoint verification behaviour for `.msg` files.
+
+### Changed
+
+- Replaced hard skip logic with tolerance-based verification handling for
+  verification-exception file types.
+
+### Tests
+
+- Added tests covering `.msg` verification behaviour and tolerance flow.
+
+## [1.6.0] - 2026-07-01
+
+### Added
+
+- Added `Result` return object to `engine.copy(...)` with transfer metadata.
 
 ### Changed
 
 - Renamed the public transfer API from `engine.run(...)` to `engine.copy(...)`.
-- Refactored engine internals to private workflow methods (`_validate_plan`, `_download_file`, `_upload_file`, `_archive_source_file`, `_delete_source_file`, `_copy`) while preserving transfer semantics.
+- Refactored engine internals to private workflow methods
+  (`_validate_plan`, `_download_file`, `_upload_file`, `_archive_source_file`,
+  `_delete_source_file`, `_copy`) while preserving transfer semantics.
 - Moved `types-requests` from runtime dependencies to dev dependencies.
 - Updated `README.md` and tests to align with the `copy(...)` API rename.
+
+## [1.5.0] - 2026-06-30
+
+### Added
+
+- Added automatic SharePoint destination folder creation during S3 to SharePoint
+  transfers.
+- Added Airflow-focused scenario coverage in the integration test script.
+
+### Changed
+
+- Updated mocked SharePoint interaction flows and assertions for folder creation
+  and nested listing behaviour.
+
+### Fixed
+
+- Fixed multiple test assertions and mocked Graph API response ordering issues.
+- Bumped Python base image patch version.
 
 ## [1.4.0] - 2026-06-30
 
@@ -38,6 +130,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Corrected S3 verification semantics to verify destination/archive objects rather than source files during archive workflows.
 - Corrected key handling in S3 archive code paths to avoid source/destination key confusion.
+
+## [1.3.2] - 2026-06-30
+
+### Added
+
+- Added and refined archive workflow support across S3 and SharePoint connectors,
+  including destination/archive verification targeting.
+
+### Changed
+
+- Updated archive-related API naming in S3 connector key management.
+- Updated docs and live-test scenarios for archive transfer behaviour.
+
+### Fixed
+
+- Fixed archive verification and error raising behaviour for archive code paths.
+- Fixed test imports and scenario assertions after branch merges.
 
 ## [1.3.1] - 2026-06-29
 
@@ -184,17 +293,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pyproject.toml` with PDM/uv build backend, Ruff linting, and mypy strict type checking
 - `README.md` with architecture diagram, configuration reference, and usage instructions
 
+[1.9.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.8.1...v1.9.0
+[1.8.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.8.0...v1.8.1
+[1.8.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.2...v1.4.0
+[1.3.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.3...v1.3.0
+[1.2.3]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.2...v1.2.3
+[1.2.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v0.1.2...v1.0.0
 [0.1.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/releases/tag/v0.1.0
-[1.2.3]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.2...v1.2.3
-[1.2.2]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.1...v1.2.2
-[1.2.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.0...v1.2.1
-[1.3.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.2.3...v1.3.0
-[1.3.1]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.0...v1.3.1
-[1.4.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.3.1...v1.4.0
-[1.5.0]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.4.0...v1.5.0
-[Unreleased]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/ministryofjustice/aws-sharepoint-connector/compare/v1.9.0...HEAD

@@ -9,7 +9,11 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from aws_sharepoint_connector.constants import RETRYABLE_ERROR_CODES
+from aws_sharepoint_connector.constants import (
+    MIN_PRINTABLE_ASCII,
+    RETRYABLE_ERROR_CODES,
+)
+from aws_sharepoint_connector.exceptions import InvalidPathError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,8 +21,57 @@ if TYPE_CHECKING:
 log = logging.getLogger("s3-sharepoint")
 
 
+def normalise_extension(extension: str) -> str:
+    """Normalise a file extension to a lowercase, dot-free string.
+
+    Args:
+        extension (str): Raw extension, with or without a leading dot and in any case
+        (e.g. ``".CSV"``).
+
+    Returns:
+        str: Normalised extension (e.g. ``"csv"``). Empty or whitespace-only entries are
+        dropped.
+
+    """
+    return extension.strip().lower().lstrip(".")
+
+
+def validate_path(path: str, field_name: str, *, allow_empty: bool = False) -> None:
+    """Validate that a remote S3 or SharePoint path is safe to use.
+
+    Guards against path traversal and injection by rejecting absolute paths,
+    ``..`` segments, backslash separators, and control characters.
+
+    Args:
+        path (str): The path to validate.
+        field_name (str): The name of the field being validated, used in errors.
+        allow_empty (bool): Whether an empty path is permitted. Defaults to False.
+
+    Raises:
+        InvalidPathError: If the path is empty (when not allowed) or unsafe.
+
+    """
+    if not path:
+        if allow_empty:
+            return
+        err = f"{field_name} must be a non-empty path."
+        raise InvalidPathError(err)
+    if any(ord(char) < MIN_PRINTABLE_ASCII for char in path):
+        err = f"{field_name} contains invalid control characters: {path!r}"
+        raise InvalidPathError(err)
+    if "\\" in path:
+        err = f"{field_name} must use '/' as the path separator: {path!r}"
+        raise InvalidPathError(err)
+    if path.startswith("/"):
+        err = f"{field_name} must be a relative path, not absolute: {path!r}"
+        raise InvalidPathError(err)
+    if any(segment == ".." for segment in path.split("/")):
+        err = f"{field_name} must not contain '..' path segments: {path!r}"
+        raise InvalidPathError(err)
+
+
 def setup_logger() -> logging.Logger:
-    """Return a logger object and an io stream of the data that is logged."""
+    """Return a configured package logger with a stdout stream handler."""
     log = logging.getLogger("s3-sharepoint")
     log.setLevel(logging.INFO)
     if not log.handlers:
