@@ -23,7 +23,6 @@ from aws_sharepoint_connector.constants import (
     FILE_SIZE_TOLERANCE,
     MAX_CHUNK_RETRIES,
     SERVER_ERROR_CODE,
-    SHAREPOINT_DOMAIN,
     TOO_MANY_REQUESTS_CODE,
 )
 from aws_sharepoint_connector.exceptions import (
@@ -93,7 +92,7 @@ class SharePointConnector(BaseModel):
         site_path = f"/sites/{self.library.site}"
 
         site_url = (
-            f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_DOMAIN}{site_path}"
+            f"https://graph.microsoft.com/v1.0/sites/{self.library.domain}:{site_path}"
         )
 
         site_response = request_with_retry(

@@ -22,6 +22,7 @@ MODE_MAP: dict[str, type[UploadToS3Engine | UploadToSharePointEngine]] = {
 
 def create_engine(
     mode: Literal["write_to_s3", "write_to_sharepoint"],
+    sp_domain: str,
     sp_site: str,
     sp_library: str,
     s3_bucket: str,
@@ -52,8 +53,9 @@ def create_engine(
         mode (Literal["write_to_s3", "write_to_sharepoint"]): Transfer direction.
             ``write_to_s3`` downloads from SharePoint and uploads to S3;
             ``write_to_sharepoint`` downloads from S3 and uploads to SharePoint.
+        sp_domain (str): SharePoint domain (e.g. ``'organisation.sharepoint.com'``).
         sp_site (str): SharePoint site name (without the full URL prefix).
-            For a file at ``https://justiceuk.sharepoint.com/sites/analytics-site/...``
+            For a file at ``https://organisation.sharepoint.com/sites/analytics-site/...``
             use ``sp_site='analytics-site'``.
         sp_library (str): Name of SharePoint document library (e.g. ``'Documents'``).
         s3_bucket (str): S3 bucket name without the ``s3://`` prefix.
@@ -86,7 +88,7 @@ def create_engine(
         raise InvalidModeError(err)
 
     secrets = SecretConfig()  # type: ignore[call-arg]
-    library = SharePointLibrary(site=sp_site, library=sp_library)
+    library = SharePointLibrary(domain=sp_domain, site=sp_site, library=sp_library)
     bucket = S3Bucket(bucket=s3_bucket)
 
     log.info(
