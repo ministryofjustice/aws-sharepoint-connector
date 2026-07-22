@@ -33,7 +33,7 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 
 ### High level process flow
 
-1. Create an engine with `create_engine(mode, sp_site, sp_library, s3_bucket)`
+1. Create an engine with `create_engine(mode, sp_domain, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
 3. For each file, call `engine.copy(source, destination, archive_folder="", source_handling="none")`:
     - Validates source and destination paths (and archive folder if supplied).
@@ -82,7 +82,7 @@ DO NOT store as plain text
 
 Passed directly to `create_engine()` from your calling code
 
-**`create_engine(mode, sp_site, sp_library, s3_bucket)`**
+**`create_engine(mode, sp_domain, sp_site, sp_library, s3_bucket)`**
 
 | Argument | Type | Description |
 | --- | --- | --- |
@@ -115,13 +115,14 @@ Optional source listing helper on each engine:
 ### Example: SharePoint → S3 (single file)
 
 For a SharePoint file at:
-`https://justiceuk.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv`
+`https://organisation.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv`
 
 To copy to `s3://my-bucket/path/to/daily_report.csv`:
 
 ```python
 engine = create_engine(
     mode="write_to_s3",
+    sp_domain="organisation.sharepoint.com",
     sp_site="analytics-site",
     sp_library="Documents",
     s3_bucket="my-bucket",
@@ -143,6 +144,7 @@ To move the same file in the other direction:
 ```python
 engine = create_engine(
     mode="write_to_sharepoint",
+    sp_domain="organisation.sharepoint.com",
     sp_site="analytics-site",
     sp_library="Documents",
     s3_bucket="my-bucket",
@@ -162,6 +164,7 @@ for plan in plans:
 ```python
 engine = create_engine(
     mode="write_to_sharepoint",
+    sp_domain="organisation.sharepoint.com",
     sp_site="analytics-site",
     sp_library="Documents",
     s3_bucket="my-bucket",
@@ -246,6 +249,7 @@ from aws_sharepoint_connector import create_engine
 
 engine = create_engine(
     mode="write_to_s3",
+    sp_domain="organisation.sharepoint.com",
     sp_site="analytics-site",
     sp_library="Documents",
     s3_bucket="my-bucket",

@@ -22,13 +22,23 @@ class TestCreateEngine:
 
     def test_write_to_s3_returns_upload_to_s3_engine(self) -> None:
         """Test that write_to_s3 mode returns an UploadToS3Engine."""
-        eng = create_engine("write_to_s3", "analytics-site", "Documents", "my-bucket")
+        eng = create_engine(
+            "write_to_s3",
+            "organisation.sharepoint.com",
+            "analytics-site",
+            "Documents",
+            "my-bucket",
+        )
         assert isinstance(eng, engine_module.UploadToS3Engine)
 
     def test_write_to_sharepoint_returns_upload_to_sharepoint_engine(self) -> None:
         """Test that write_to_sharepoint mode returns an UploadToSharePointEngine."""
         eng = create_engine(
-            "write_to_sharepoint", "analytics-site", "Documents", "my-bucket"
+            "write_to_sharepoint",
+            "organisation.sharepoint.com",
+            "analytics-site",
+            "Documents",
+            "my-bucket",
         )
         assert isinstance(eng, engine_module.UploadToSharePointEngine)
 
@@ -37,6 +47,7 @@ class TestCreateEngine:
         with pytest.raises(InvalidModeError, match="Invalid mode"):
             create_engine(
                 "invalid_mode",  # type: ignore[arg-type]
+                "organisation.sharepoint.com",
                 "analytics-site",
                 "Documents",
                 "my-bucket",

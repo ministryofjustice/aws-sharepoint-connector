@@ -14,35 +14,40 @@ from aws_sharepoint_connector.config import (
 
 def test_sharepointlibrary_valid_values() -> None:
     """Test that SharePointLibrary can be instantiated with valid fields."""
-    lib = SharePointLibrary(site="analytics-site", library="Documents")
+    lib = SharePointLibrary(
+        domain="organisation.sharepoint.com", site="analytics-site", library="Documents"
+    )
+    assert lib.domain == "organisation.sharepoint.com"
     assert lib.site == "analytics-site"
     assert lib.library == "Documents"
 
 
-@pytest.mark.parametrize(
-    ("invalid_site", "expected_error"),
-    [
-        ("", "site must be a non-empty string"),
-        (
-            "https://justiceuk.sharepoint.com/sites/analytics-site",
-            "site should not include the 'https://justiceuk.sharepoint.com/sites/'",
-        ),
-    ],
-)
-def test_sharepointlibrary_invalid_sites(
-    invalid_site: str, expected_error: str
-) -> None:
-    """Test that invalid site values raise ValidationError with expected message."""
-    with pytest.raises(ValidationError, match=expected_error) as exc_info:
-        SharePointLibrary(site=invalid_site, library="Documents")
+def test_sharepointlibrary_invalid_domain() -> None:
+    """Test that invalid domain values raise ValidationError with expected message."""
+    with pytest.raises(
+        ValidationError, match="domain, site, and library must be non-empty strings"
+    ):
+        SharePointLibrary(domain="", site="analytics-site", library="Documents")
 
-    assert expected_error in str(exc_info.value)
+
+def test_sharepointlibrary_invalid_site() -> None:
+    """Test that invalid site values raise ValidationError with expected message."""
+    with pytest.raises(
+        ValidationError, match="domain, site, and library must be non-empty strings"
+    ):
+        SharePointLibrary(
+            domain="organisation.sharepoint.com", site="", library="Documents"
+        )
 
 
 def test_sharepointlibrary_empty_library() -> None:
     """Test that an empty library raises a validation error."""
-    with pytest.raises(ValidationError, match="library must be a non-empty string"):
-        SharePointLibrary(site="analytics-site", library="")
+    with pytest.raises(
+        ValidationError, match="domain, site, and library must be non-empty strings"
+    ):
+        SharePointLibrary(
+            domain="organisation.sharepoint.com", site="analytics-site", library=""
+        )
 
 
 def test_s3bucket_valid_values() -> None:
