@@ -85,7 +85,7 @@ def test_get_site_id_success() -> None:
     assert mock_get.call_count == 1
     assert mock_get.call_args[0][0] == (
         "https://graph.microsoft.com/v1.0/sites/"
-        "justiceuk.sharepoint.com:/sites/analytics-site"
+        "organisation.sharepoint.com:/sites/analytics-site"
     )
     assert mock_get.call_args[1]["headers"] == {
         "Authorization": "Bearer fake-token",
@@ -124,7 +124,7 @@ def test_get_drive_id_success() -> None:
     assert mock_get.call_count == 2
     assert mock_get.call_args_list[0].args[0] == (
         "https://graph.microsoft.com/v1.0/sites/"
-        "justiceuk.sharepoint.com:/sites/analytics-site"
+        "organisation.sharepoint.com:/sites/analytics-site"
     )
     assert mock_get.call_args_list[0].kwargs["headers"] == {
         "Authorization": "Bearer fake-token",

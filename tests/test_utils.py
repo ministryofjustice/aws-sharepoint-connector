@@ -12,6 +12,7 @@ from requests import Response
 
 from aws_sharepoint_connector.config import S3Bucket, SharePointLibrary
 
+SP_DOMAIN = "organisation.sharepoint.com"
 SP_SITE = "analytics-site"
 SP_LIBRARY = "Documents"
 SP_FILE_PATH = "reports/2026/file1.csv"
@@ -26,7 +27,7 @@ def make_sharepoint_library(
     library: str = SP_LIBRARY,
 ) -> SharePointLibrary:
     """Return a SharePointLibrary instance for tests."""
-    return SharePointLibrary(site=site, library=library)
+    return SharePointLibrary(domain=SP_DOMAIN, site=site, library=library)
 
 
 def make_s3_bucket(bucket: str = S3_BUCKET) -> S3Bucket:

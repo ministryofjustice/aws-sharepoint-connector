@@ -30,6 +30,7 @@ def build_binary_response(content: bytes) -> Response:
 @pytest.mark.parametrize("file_count", [1, 6])
 def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
     """E2E test: download from SharePoint and upload to S3 for 1 and 6 files."""
+    sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = "my-destination-bucket"
@@ -72,7 +73,7 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
             "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
         ),
     ):
-        eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
+        eng = create_engine("write_to_s3", sp_domain, sp_site, sp_library, s3_bucket)
         for plan in plans_dicts:
             eng.copy(plan["source"], plan["destination"])
 
@@ -88,6 +89,7 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
 @pytest.mark.parametrize("file_count", [1, 6])
 def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
     """E2E test: download from S3 and upload to SharePoint for 1 and 6 files."""
+    sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = utils.S3_BUCKET
@@ -157,7 +159,9 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
             side_effect=session_put_mocks,
         ) as mock_session_put,
     ):
-        eng = create_engine("write_to_sharepoint", sp_site, sp_library, s3_bucket)
+        eng = create_engine(
+            "write_to_sharepoint", sp_domain, sp_site, sp_library, s3_bucket
+        )
         for plan in plans_dicts:
             eng.copy(plan["source"], plan["destination"])
 
@@ -189,6 +193,7 @@ def test_e2e_write_to_s3_validation_failure_raises_and_writes_nothing(
     s3: boto3.client,
 ) -> None:
     """A missing SharePoint source aborts copy before anything is written to S3."""
+    sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = "my-destination-bucket"
@@ -212,7 +217,7 @@ def test_e2e_write_to_s3_validation_failure_raises_and_writes_nothing(
             "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
         ),
     ):
-        eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
+        eng = create_engine("write_to_s3", sp_domain, sp_site, sp_library, s3_bucket)
         with pytest.raises(ProcessingError, match="Validation failed"):
             eng.copy(source, destination)
 
@@ -223,6 +228,7 @@ def test_e2e_write_to_s3_mid_batch_failure_preserves_prior_and_stops(
     s3: boto3.client,
 ) -> None:
     """A mid-batch failure keeps the first transfer and blocks the failing one."""
+    sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = "my-destination-bucket"
@@ -252,7 +258,7 @@ def test_e2e_write_to_s3_mid_batch_failure_preserves_prior_and_stops(
             "aws_sharepoint_connector.sharepoint.requests.get", side_effect=get_mocks
         ),
     ):
-        eng = create_engine("write_to_s3", sp_site, sp_library, s3_bucket)
+        eng = create_engine("write_to_s3", sp_domain, sp_site, sp_library, s3_bucket)
 
         eng.copy(plans[0]["source"], plans[0]["destination"])
 
@@ -268,6 +274,7 @@ def test_e2e_write_to_sharepoint_validation_failure_raises_and_uploads_nothing(
     s3: boto3.client,
 ) -> None:
     """A missing S3 source aborts copy before any SharePoint upload occurs."""
+    sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = utils.S3_BUCKET
@@ -293,7 +300,9 @@ def test_e2e_write_to_sharepoint_validation_failure_raises_and_uploads_nothing(
         patch("aws_sharepoint_connector.sharepoint.requests.post") as mock_post,
         patch("aws_sharepoint_connector.sharepoint.requests.Session.put") as mock_put,
     ):
-        eng = create_engine("write_to_sharepoint", sp_site, sp_library, s3_bucket)
+        eng = create_engine(
+            "write_to_sharepoint", sp_domain, sp_site, sp_library, s3_bucket
+        )
         with pytest.raises(ProcessingError, match="Validation failed"):
             eng.copy(source, destination)
 
@@ -333,7 +342,11 @@ def test_e2e_copy_rejects_unsafe_paths(
         ),
     ):
         eng = create_engine(
-            "write_to_s3", utils.SP_SITE, utils.SP_LIBRARY, "my-destination-bucket"
+            "write_to_s3",
+            utils.SP_DOMAIN,
+            utils.SP_SITE,
+            utils.SP_LIBRARY,
+            "my-destination-bucket",
         )
         with pytest.raises(InvalidPathError):
             eng.copy(

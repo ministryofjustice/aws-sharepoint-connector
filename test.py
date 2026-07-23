@@ -52,6 +52,7 @@ def setup_test_environment() -> tuple[UploadToSharePointEngine, UploadToS3Engine
 
     s3_to_sharepoint_engine: UploadToSharePointEngine = create_engine(  # type: ignore[assignment]
         mode="write_to_sharepoint",
+        sp_domain=os.environ["SP_DOMAIN"],
         sp_site=os.environ["SP_SITE"],
         sp_library=os.environ["SP_LIBRARY"],
         s3_bucket=os.environ["S3_BUCKET"],
@@ -59,6 +60,7 @@ def setup_test_environment() -> tuple[UploadToSharePointEngine, UploadToS3Engine
 
     sp_to_s3_engine: UploadToS3Engine = create_engine(  # type: ignore[assignment]
         mode="write_to_s3",
+        sp_domain=os.environ["SP_DOMAIN"],
         sp_site=os.environ["SP_SITE"],
         sp_library=os.environ["SP_LIBRARY"],
         s3_bucket=os.environ["S3_BUCKET"],
@@ -420,6 +422,7 @@ def scenario_7(
 
     invalid_bucket_engine = create_engine(
         mode="write_to_sharepoint",
+        sp_domain=os.environ["SP_DOMAIN"],
         sp_site=os.environ["SP_SITE"],
         sp_library=os.environ["SP_LIBRARY"],
         s3_bucket="invalid_bucket",
