@@ -25,23 +25,23 @@ Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
 
 [dependency-groups]
 dev = [
-    "mypy>=2.1.0",
+    "mypy>=2.2.0",
     "pre-commit>=4.0.0",
-    "ruff>=0.15.19",
+    "ruff>=0.16.0",
     "types-requests>=2.33.0.20260503",
 ]
 package = [
     "packaging>=26.2",
-    "python-semantic-release>=10.5.3",
+    "python-semantic-release>=10.6.1",
     "toml-cli>=0.8.2",
-    "typer>=0.26.7",
+    "typer>=0.26.8",
 ]
 test = [
     "moto>=5.2.0",
     "pandas>=3.0.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.0.0",
-    "typer>=0.26.7",
+
 ]
 
 [tool.uv]
@@ -67,6 +67,7 @@ addopts = "--cov=src --cov=scripts --cov-report=term-missing --cov-report=xml"
 select = ["ALL"]
 # Remove warnings
 ignore = [
+    "CPY001", # Missing copyright notice
     "D203", # 1 blank line required before class docstring
     "D213", # Multi-line docstring summary should start at the second line
     "COM812", # Trailing comma missing
