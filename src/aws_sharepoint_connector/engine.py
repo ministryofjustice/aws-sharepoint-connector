@@ -178,6 +178,21 @@ class Engine(ABC):
 
         content_size = len(content)
 
+        if not content_size:
+            log.info(
+                "Downloaded source file '%s' is empty (0 bytes). "
+                "Skipping upload to destination '%s'.",
+                source,
+                destination,
+            )
+            return Result(
+                source=source,
+                destination=destination,
+                content_size=content_size,
+                source_handling=source_handling,
+                status="skipped",
+            )
+
         self._upload_file(content, destination, content_size)
         log.info(
             "Transfer workflow complete: '%s' -> '%s' (%s bytes transferred)",

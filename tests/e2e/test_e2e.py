@@ -86,57 +86,49 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
         )
 
 
-@pytest.mark.parametrize("file_count", [1, 6])
-def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
-    """E2E test: download from S3 and upload to SharePoint for 1 and 6 files."""
+def test_e2e_write_to_sharepoint(s3: boto3.client) -> None:
+    """E2E test: download from S3 and upload to SharePoint, including empty files."""
     sp_domain = utils.SP_DOMAIN
     sp_site = utils.SP_SITE
     sp_library = utils.SP_LIBRARY
     s3_bucket = utils.S3_BUCKET
 
     plans_dicts: list[dict[str, str]] = [
-        {
-            "source": f"path/to/file{i}.csv",
-            "destination": f"reports/2026/file{i}.csv",
-        }
-        for i in range(1, file_count + 1)
+        {"source": f"path/to/file{i}.csv", "destination": f"reports/2026/file{i}.csv"}
+        for i in range(1, 9)
     ]
-
-    file_sizes_mb = [1] * file_count
+    file_sizes_mb = [1] * 6 + [0] * 2
     expected_payloads = [create_test_data(size) for size in file_sizes_mb]
 
     utils.create_bucket(s3_bucket, s3)
-
     for plan, payload in zip(plans_dicts, expected_payloads, strict=True):
         s3.put_object(Bucket=s3_bucket, Key=plan["source"], Body=payload)
 
     chunk_size = 10 * 1024 * 1024
     chunk_counts = [ceil((size * 1024 * 1024) / chunk_size) for size in file_sizes_mb]
+    total_chunks = sum(chunk_counts)
 
+    # Mocks: 2 init GETs + 6 files (check_object + verify) + 2 empty (check_object only)
     get_mocks: list[Response] = [
         utils.mock_site_id_response(),
         utils.mock_drive_id_response("complete"),
     ]
-    for i in range(file_count):
+    for i in range(6):
         get_mocks.extend(
             [
-                utils.mock_check_object_response(
-                    200,
-                    "reports/2026",
-                    "folder",
-                ),
+                utils.mock_check_object_response(200, "reports/2026", "folder"),
                 utils.mock_verify_uploaded_file_response(
-                    200,
-                    f"file{i + 1}.csv",
-                    file_sizes_mb[i] * 1024 * 1024,
+                    200, f"file{i + 1}.csv", 1024 * 1024
                 ),
             ]
         )
-    post_mocks = [utils.mock_upload_url_response() for _ in range(file_count)]
-    session_get_mocks = [
-        utils.mock_get_next_start_response() for _ in range(file_count)
-    ]
-    total_chunks = sum(chunk_counts)
+    for _ in range(2):
+        get_mocks.extend(
+            [utils.mock_check_object_response(200, "reports/2026", "folder")]
+        )
+
+    post_mocks = [utils.mock_upload_url_response() for _ in range(6)]
+    session_get_mocks = [utils.mock_get_next_start_response() for _ in range(6)]
     session_put_mocks = [utils.mock_session_put_response() for _ in range(total_chunks)]
 
     with (
@@ -162,25 +154,33 @@ def test_e2e_write_to_sharepoint(file_count: int, s3: boto3.client) -> None:
         eng = create_engine(
             "write_to_sharepoint", sp_domain, sp_site, sp_library, s3_bucket
         )
-        for plan in plans_dicts:
-            eng.copy(plan["source"], plan["destination"])
+        results = [
+            eng.copy(plan["source"], plan["destination"]) for plan in plans_dicts
+        ]
 
+    # Verify uploads
     put_calls = mock_session_put.call_args_list
     assert len(put_calls) == total_chunks, (
         f"Expected {total_chunks} PUT calls, got {len(put_calls)}"
     )
+    assert mock_sharepoint_gets.call_count == 16, (
+        f"Expected 16 GET calls, got {mock_sharepoint_gets.call_count}"
+    )
 
-    get_call_count = mock_sharepoint_gets.call_count
-    assert get_call_count == 2 + (file_count * 2)
-
+    # Verify normal file payloads
     uploaded_chunks = [call.kwargs["data"] for call in put_calls]
     offset = 0
-    for expected_payload, chunk_count in zip(
-        expected_payloads, chunk_counts, strict=True
+    for i, (expected_payload, chunk_count) in enumerate(
+        zip(expected_payloads[:6], chunk_counts[:6], strict=True)
     ):
         uploaded_payload = b"".join(uploaded_chunks[offset : offset + chunk_count])
-        assert uploaded_payload == expected_payload, "Payload mismatch"
+        assert uploaded_payload == expected_payload, f"Payload mismatch for file {i}"
         offset += chunk_count
+
+    # Verify empty files were skipped
+    for i, result in enumerate(results[6:]):
+        assert result.status == "skipped", f"Empty file {i} should be skipped"
+        assert result.content_size == 0, f"Empty file {i} should have 0 bytes"
 
 
 def _assert_s3_object_absent(s3: boto3.client, bucket: str, key: str) -> None:

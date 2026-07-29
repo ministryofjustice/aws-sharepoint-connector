@@ -268,6 +268,36 @@ class TestEngines:
         mock_set_archive_key.assert_called_once_with("archive/reports/2026/file1.csv")
         mock_archive_object.assert_called_once_with(123)
 
+    def test_upload_sharepoint_copy_empty_file(self, s3: boto3.client) -> None:
+        """Copy calls archive_source_file when source_handling is archive."""
+        with (
+            patch.object(
+                engine.UploadToSharePointEngine,
+                "_download_file",
+                return_value=b"",
+            ) as mock_download,
+            patch.object(
+                engine.UploadToSharePointEngine, "_validate_plan"
+            ) as mock_validate,
+        ):
+            upload_sp_engine = self.setup_engine("sharepoint", s3)
+            result = upload_sp_engine.copy(
+                source="reports/2026/file.csv",
+                destination="path/to/file.csv",
+                archive_folder="archive/path",
+                source_handling="archive",
+            )
+
+        assert result.source == "reports/2026/file.csv"
+        assert result.destination == "path/to/file.csv"
+        assert result.content_size == 0
+        assert result.source_handling == "archive"
+        assert result.status == "skipped"
+        mock_download.assert_called_once_with("reports/2026/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
+
     def test_upload_sharepoint_copy_archive_option(self, s3: boto3.client) -> None:
         """Copy calls archive_source_file when source_handling is archive."""
         with (
@@ -565,6 +595,34 @@ class TestEngines:
 
         mock_set_archive_url.assert_called_once_with(archive_folder)
         mock_archive_file.assert_called_once_with(123)
+
+    def test_upload_s3_copy_empty_file(self, s3: boto3.client) -> None:
+        """Copy calls archive_source_file when source_handling is archive."""
+        with (
+            patch.object(
+                engine.UploadToS3Engine,
+                "_download_file",
+                return_value=b"",
+            ) as mock_download,
+            patch.object(engine.UploadToS3Engine, "_validate_plan") as mock_validate,
+        ):
+            upload_s3_engine = self.setup_engine("s3", s3)
+            result = upload_s3_engine.copy(
+                source="reports/2026/file.csv",
+                destination="path/to/file.csv",
+                archive_folder="archive/path",
+                source_handling="archive",
+            )
+
+        assert result.source == "reports/2026/file.csv"
+        assert result.destination == "path/to/file.csv"
+        assert result.content_size == 0
+        assert result.source_handling == "archive"
+        assert result.status == "skipped"
+        mock_download.assert_called_once_with("reports/2026/file.csv")
+        mock_validate.assert_called_once_with(
+            source="reports/2026/file.csv", destination="path/to/file.csv"
+        )
 
     def test_upload_s3_copy_archive_option(self, s3: boto3.client) -> None:
         """Copy calls archive_source_file when source_handling is archive."""

@@ -917,6 +917,42 @@ def test_verify_uploaded_file_success(
     }
 
 
+def test_verify_uploaded_file_empty(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Test that verify_uploaded_file succeeds when uploaded file is empty."""
+    expected_size = 0
+    file_name = SP_FILE_PATH.rsplit("/", maxsplit=1)[-1]
+
+    connector = make_connector()
+    connector.update_with_file_path(SP_FILE_PATH)
+
+    with (
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.get",
+            return_value=utils.mock_verify_uploaded_file_response(
+                200, file_name, expected_size
+            ),
+        ) as mock_verify,
+        caplog.at_level(logging.INFO, logger="s3-sharepoint"),
+    ):
+        connector.verify_uploaded_file(expected_size, verify_type="destination")
+
+    assert (
+        f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
+        in caplog.text
+    )
+    assert mock_verify.call_count == 1
+    assert mock_verify.call_args[0][0] == (
+        "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+        "/root:/reports/2026/file1.csv:?$select=name,size,file"
+    )
+    assert mock_verify.call_args[1]["headers"] == {
+        "Authorization": "Bearer fake-token",
+        "Accept": "application/json",
+    }
+
+
 def test_verify_uploaded_not_found() -> None:
     """Test that verify_uploaded_file raises ObjectNotFoundError when file is absent."""
     connector = make_connector()
@@ -1095,6 +1131,38 @@ def test_upload_stream_in_chunks_success() -> None:
 
     assert mock_put.call_count == 1
     assert mock_put.call_args[1]["data"] == payload
+
+
+def test_upload_stream_in_chunks_empty(caplog: pytest.LogCaptureFixture) -> None:
+    """Test that an empty file is skipped for upload."""
+    payload = b""
+
+    with (
+        utils.sharepoint_connector_patches(
+            extra_post_side_effects=[utils.mock_upload_url_response()],
+            extra_get_side_effects=[
+                utils.mock_verify_uploaded_file_response(
+                    200, SP_FILE_NAME, len(payload)
+                ),
+            ],
+        ),
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.Session.get",
+            return_value=utils.mock_get_next_start_response(0, len(payload)),
+        ) as mock_get,
+        patch(
+            "aws_sharepoint_connector.sharepoint.requests.Session.put",
+            return_value=utils.mock_session_put_response(),
+        ) as mock_put,
+    ):
+        connector = make_connector()
+        connector.update_with_file_path(SP_FILE_PATH)
+        connector.set_upload_url()
+        connector.upload_stream_in_chunks(BytesIO(payload), len(payload))
+
+    assert mock_put.call_count == 0
+    assert mock_get.call_count == 0
+    assert "Skipping upload of empty file." in caplog.text
 
 
 def test_upload_stream_in_chunks_permanent_error_raises() -> None:

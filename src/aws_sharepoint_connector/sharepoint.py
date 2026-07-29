@@ -523,7 +523,7 @@ not found in SharePoint."
 
         actual_size = item.get("size")
 
-        if actual_size:
+        if actual_size is not None:
             size_verification = (
                 abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
                 if file_type in FILE_SIZE_TOLERANCE
@@ -584,7 +584,7 @@ not found in SharePoint."
         }
         return session.put(self.upload_url, headers=h, data=data, timeout=(10, 300))
 
-    def upload_stream_in_chunks(
+    def upload_stream_in_chunks(  # noqa: C901
         self,
         file: BytesIO,
         file_size: int,
@@ -601,7 +601,13 @@ not found in SharePoint."
         Raises:
             ProcessingError: If the upload fails.
 
+        Will not process files of size 0.
+
         """
+        if file_size == 0:
+            log.info("Skipping upload of empty file.")
+            return
+
         session = build_retry_session()
 
         start = self.get_next_start(session=session)
