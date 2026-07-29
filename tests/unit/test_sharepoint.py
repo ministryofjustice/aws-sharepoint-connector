@@ -857,20 +857,26 @@ def test_fetch_file_request_error() -> None:
         (
             "destination",
             SP_FILE_PATH,
-            "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-            "/root:/reports/2026/file1.csv:?$select=name,size,file",
+            (
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+                "/root:/reports/2026/file1.csv:?$select=name,size,file"
+            ),
         ),
         (
             "destination",
             SP_FILE_PATH_NO_DIR,
-            "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-            "/root:/file6.csv:?$select=name,size,file",
+            (
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+                "/root:/file6.csv:?$select=name,size,file"
+            ),
         ),
         (
             "archive",
             SP_FILE_PATH,
-            "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-            "/root:/archive/reports/2026/file1.csv:?$select=name,size,file",
+            (
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
+                "/root:/archive/reports/2026/file1.csv:?$select=name,size,file"
+            ),
         ),
     ],
 )
