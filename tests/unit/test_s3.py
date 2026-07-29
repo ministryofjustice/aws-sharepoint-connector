@@ -116,7 +116,7 @@ def test_set_archive_key(connector: S3Connector) -> None:
         ),
     ],
 )
-def test_list_objects_success(  # noqa: PLR0913
+def test_list_objects_success(  # noqa: PLR0913, PLR0917
     prefixes: list[str] | None,
     include_ext: list[str] | None,
     exclude_ext: list[str] | None,

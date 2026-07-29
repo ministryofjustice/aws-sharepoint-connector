@@ -630,7 +630,7 @@ not found in SharePoint."
                 log.warning(
                     (
                         "SharePoint chunk upload failed due to network error;"
-                        " attempting resume (retry %s/%s).",
+                        " attempting resume (retry %s/%s)."
                     ),
                     chunk_retries,
                     MAX_CHUNK_RETRIES,
@@ -666,7 +666,7 @@ not found in SharePoint."
                 log.warning(
                     (
                         "SharePoint chunk upload returned HTTP %s;"
-                        " attempting resume (retry %s/%s).",
+                        " attempting resume (retry %s/%s)."
                     ),
                     r.status_code,
                     chunk_retries,
