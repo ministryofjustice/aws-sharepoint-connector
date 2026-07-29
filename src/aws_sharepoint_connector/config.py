@@ -10,48 +10,47 @@ class SharePointLibrary(BaseModel):
     """Configuration for a SharePoint document library.
 
     Attributes:
-        site (str): The source/target SharePoint site name (without URL prefix).
+        domain(str): The SharePoint domain (e.g. ``'organisation.sharepoint.com'``).
+        site (str): The source/target SharePoint site name (without the domain).
         library (str): The source/target document library name.
 
     Example::
 
         # For a file at:
-        # https://justiceuk.sharepoint.com/sites/analytics-site/Documents/...
-        SharePointLibrary(site='analytics-site', library='Documents')
+        # https://organisation.sharepoint.com/sites/analytics-site/Documents/...
+        SharePointLibrary(
+            domain='organisation.sharepoint.com',
+            site='analytics-site',
+            library='Documents'
+        )
 
     """
 
+    domain: str
     site: str
     library: str
 
-    @field_validator("site")
+    @field_validator("domain")
+    @classmethod
+    def validate_domain(cls, v: str) -> str:
+        """Validate that the SharePoint domain is valid.
+
+        - Is a non-empty string
+        """
+        if not v:
+            err = "domain, site, and library must be non-empty strings."
+            raise ValueError(err)
+        return v
+
+    @field_validator("site", "library")
     @classmethod
     def validate_site(cls, v: str) -> str:
         """Validate that the SharePoint site name is valid.
 
         - Is a non-empty string
-        - Does not include the "https://justiceuk.sharepoint.com/sites/" prefix
         """
         if not v:
-            err = "site must be a non-empty string."
-            raise ValueError(err)
-        if v.startswith("https://justiceuk.sharepoint.com/sites/"):
-            err = (
-                "site should not include the"
-                " 'https://justiceuk.sharepoint.com/sites/' prefix."
-            )
-            raise ValueError(err)
-        return v
-
-    @field_validator("library")
-    @classmethod
-    def validate_library(cls, v: str) -> str:
-        """Validate that the SharePoint library name is valid.
-
-        - Is a non-empty string
-        """
-        if not v:
-            err = "library must be a non-empty string."
+            err = "domain, site, and library must be non-empty strings."
             raise ValueError(err)
         return v
 

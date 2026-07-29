@@ -23,7 +23,6 @@ from aws_sharepoint_connector.constants import (
     FILE_SIZE_TOLERANCE,
     MAX_CHUNK_RETRIES,
     SERVER_ERROR_CODE,
-    SHAREPOINT_DOMAIN,
     TOO_MANY_REQUESTS_CODE,
 )
 from aws_sharepoint_connector.exceptions import (
@@ -93,7 +92,7 @@ class SharePointConnector(BaseModel):
         site_path = f"/sites/{self.library.site}"
 
         site_url = (
-            f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_DOMAIN}{site_path}"
+            f"https://graph.microsoft.com/v1.0/sites/{self.library.domain}:{site_path}"
         )
 
         site_response = request_with_retry(
@@ -524,7 +523,7 @@ not found in SharePoint."
 
         actual_size = item.get("size")
 
-        if actual_size:
+        if actual_size is not None:
             size_verification = (
                 abs(actual_size - expected_size) > FILE_SIZE_TOLERANCE[file_type]
                 if file_type in FILE_SIZE_TOLERANCE
@@ -585,7 +584,7 @@ not found in SharePoint."
         }
         return session.put(self.upload_url, headers=h, data=data, timeout=(10, 300))
 
-    def upload_stream_in_chunks(
+    def upload_stream_in_chunks(  # noqa: C901
         self,
         file: BytesIO,
         file_size: int,
@@ -602,7 +601,13 @@ not found in SharePoint."
         Raises:
             ProcessingError: If the upload fails.
 
+        Will not process files of size 0.
+
         """
+        if file_size == 0:
+            log.info("Skipping upload of empty file.")
+            return
+
         session = build_retry_session()
 
         start = self.get_next_start(session=session)
@@ -631,7 +636,7 @@ not found in SharePoint."
                 log.warning(
                     (
                         "SharePoint chunk upload failed due to network error;"
-                        " attempting resume (retry %s/%s).",
+                        " attempting resume (retry %s/%s)."
                     ),
                     chunk_retries,
                     MAX_CHUNK_RETRIES,
@@ -667,7 +672,7 @@ not found in SharePoint."
                 log.warning(
                     (
                         "SharePoint chunk upload returned HTTP %s;"
-                        " attempting resume (retry %s/%s).",
+                        " attempting resume (retry %s/%s)."
                     ),
                     r.status_code,
                     chunk_retries,
