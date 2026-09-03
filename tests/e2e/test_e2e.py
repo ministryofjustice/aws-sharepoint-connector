@@ -74,16 +74,19 @@ def test_e2e_write_to_s3(file_count: int, s3: boto3.client) -> None:
         ),
     ):
         eng = create_engine("write_to_s3", sp_domain, sp_site, sp_library, s3_bucket)
-        for plan in plans_dicts:
-            eng.copy(plan["source"], plan["destination"])
+        results = [
+            eng.copy(plan["source"], plan["destination"]) for plan in plans_dicts
+        ]
 
-    for _, (plan, expected_payload) in enumerate(
-        zip(plans_dicts, expected_payloads, strict=True)
+    for _, (plan, expected_payload, result) in enumerate(
+        zip(plans_dicts, expected_payloads, results, strict=True)
     ):
         obj = s3.get_object(Bucket=s3_bucket, Key=plan["destination"])
         assert obj["Body"].read() == expected_payload, (
             f"Data mismatch for {plan['destination']}"
         )
+
+        assert result.target_url == f"s3://{s3_bucket}/{plan['destination']}"
 
 
 def test_e2e_write_to_sharepoint(s3: boto3.client) -> None:
@@ -109,6 +112,9 @@ def test_e2e_write_to_sharepoint(s3: boto3.client) -> None:
     total_chunks = sum(chunk_counts)
 
     # Mocks: 2 init GETs + 6 files (check_object + verify) + 2 empty (check_object only)
+    expected_web_urls = [
+        f"https://contoso.sharepoint.com/sites/fake/file{i + 1}.csv" for i in range(6)
+    ]
     get_mocks: list[Response] = [
         utils.mock_site_id_response(),
         utils.mock_drive_id_response("complete"),
@@ -118,7 +124,7 @@ def test_e2e_write_to_sharepoint(s3: boto3.client) -> None:
             [
                 utils.mock_check_object_response(200, "reports/2026", "folder"),
                 utils.mock_verify_uploaded_file_response(
-                    200, f"file{i + 1}.csv", 1024 * 1024
+                    200, f"file{i + 1}.csv", 1024 * 1024, web_url=expected_web_urls[i]
                 ),
             ]
         )
@@ -181,6 +187,14 @@ def test_e2e_write_to_sharepoint(s3: boto3.client) -> None:
     for i, result in enumerate(results[6:]):
         assert result.status == "skipped", f"Empty file {i} should be skipped"
         assert result.content_size == 0, f"Empty file {i} should have 0 bytes"
+        assert result.target_url == "", f"Skipped file {i} should have no target_url"
+
+    # Verify uploaded files return the SharePoint webUrl
+    for i, result in enumerate(results[:6]):
+        assert result.status == "success", f"File {i} should have uploaded successfully"
+        assert result.target_url == expected_web_urls[i], (
+            f"target_url mismatch for file {i}"
+        )
 
 
 def _assert_s3_object_absent(s3: boto3.client, bucket: str, key: str) -> None:

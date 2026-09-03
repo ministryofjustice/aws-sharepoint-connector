@@ -114,10 +114,11 @@ def mock_verify_uploaded_file_response(
     status_code: int,
     file_name: str,
     size: int = 0,
+    web_url: str = "https://contoso.sharepoint.com/sites/fake/file.csv",
 ) -> Response:
     """Mock response for verify_uploaded_file."""
     return build_response(
-        json_body={"name": file_name, "size": size, "file": {}},
+        json_body={"name": file_name, "size": size, "file": {}, "webUrl": web_url},
         status_code=status_code,
     )
 
