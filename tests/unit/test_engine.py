@@ -22,6 +22,7 @@ SP_FILE_NAME = utils.SP_FILE_NAME
 S3_KEY = utils.S3_KEY
 S3_BUCKET_NAME = utils.S3_BUCKET
 DEST_S3_BUCKET = "my-destination-bucket"
+FAKE_URL = "https://fake.sharepoint.com/sites/fake/file.csv"
 
 
 def test_result_stores_transfer_details() -> None:
@@ -32,6 +33,7 @@ def test_result_stores_transfer_details() -> None:
         content_size=123,
         source_handling="archive",
         status="success",
+        target_url="https://contoso.sharepoint.com/sites/fake/file.csv",
     )
 
     assert result.source == "reports/2026/file.csv"
@@ -39,6 +41,20 @@ def test_result_stores_transfer_details() -> None:
     assert result.content_size == 123
     assert result.source_handling == "archive"
     assert result.status == "success"
+    assert result.target_url == "https://contoso.sharepoint.com/sites/fake/file.csv"
+
+
+def test_result_defaults_target_url_to_empty_string() -> None:
+    """Result defaults target_url to an empty string when not provided."""
+    result = engine.Result(
+        source="reports/2026/file.csv",
+        destination="path/to/file.csv",
+        content_size=123,
+        source_handling="none",
+        status="success",
+    )
+
+    assert result.target_url == ""
 
 
 def test_result_is_immutable() -> None:
@@ -206,11 +222,13 @@ class TestEngines:
                 SharePointConnector, "upload_stream_in_chunks"
             ) as mock_upload_stream,
             patch.object(
-                SharePointConnector, "verify_uploaded_file"
+                SharePointConnector,
+                "verify_uploaded_file",
+                return_value=FAKE_URL,
             ) as mock_verify_upload,
         ):
             upload_sp_engine = self.setup_engine("sharepoint", s3)
-            upload_sp_engine._upload_file(
+            target_url = upload_sp_engine._upload_file(
                 b"Test content", SP_FILE_PATH, len(b"Test content")
             )
 
@@ -220,6 +238,7 @@ class TestEngines:
         assert mock_upload_stream.call_args[0][0].getvalue() == b"Test content"
         assert mock_upload_stream.call_args[0][1] == len(b"Test content")
         mock_verify_upload.assert_called_once_with(len(b"Test content"), "destination")
+        assert target_url == FAKE_URL
 
     def test_upload_sharepoint_validate_plan_allows_missing_destination_folder(
         self, s3: boto3.client
@@ -293,6 +312,7 @@ class TestEngines:
         assert result.content_size == 0
         assert result.source_handling == "archive"
         assert result.status == "skipped"
+        assert result.target_url == ""
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_validate.assert_called_once_with(
             source="reports/2026/file.csv", destination="path/to/file.csv"
@@ -307,7 +327,9 @@ class TestEngines:
                 return_value=b"file content",
             ) as mock_download,
             patch.object(
-                engine.UploadToSharePointEngine, "_upload_file"
+                engine.UploadToSharePointEngine,
+                "_upload_file",
+                return_value=FAKE_URL,
             ) as mock_upload_file,
             patch.object(
                 engine.UploadToSharePointEngine, "_archive_source_file"
@@ -329,6 +351,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == "archive"
         assert result.status == "success"
+        assert result.target_url == FAKE_URL
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -374,7 +397,7 @@ class TestEngines:
                 return_value=b"file content",
             ) as mock_download,
             patch.object(
-                engine.UploadToSharePointEngine, "_upload_file"
+                engine.UploadToSharePointEngine, "_upload_file", return_value=FAKE_URL
             ) as mock_upload_file,
             patch.object(
                 engine.UploadToSharePointEngine, "_delete_source_file"
@@ -395,6 +418,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == ("delete" if delete else "none")
         assert result.status == "success"
+        assert result.target_url == FAKE_URL
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -413,7 +437,7 @@ class TestEngines:
                 return_value=b"file content",
             ) as mock_download,
             patch.object(
-                engine.UploadToSharePointEngine, "_upload_file"
+                engine.UploadToSharePointEngine, "_upload_file", return_value=FAKE_URL
             ) as mock_upload_file,
             patch.object(
                 engine.UploadToSharePointEngine, "_delete_source_file"
@@ -432,6 +456,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == "none"
         assert result.status == "success"
+        assert result.target_url == FAKE_URL
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -558,43 +583,14 @@ class TestEngines:
             patch.object(S3Connector, "verify_uploaded_object") as mock_verify_upload,
         ):
             upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine._upload_file(
+            target_url = upload_s3_engine._upload_file(
                 b"Test content", SP_FILE_PATH, len(b"Test content")
             )
 
         mock_update_key.assert_called_once_with(SP_FILE_PATH)
         mock_upload_to_s3.assert_called_once_with(b"Test content")
         mock_verify_upload.assert_called_once_with(len(b"Test content"), "destination")
-
-    def test_upload_s3_delete_source_file(self, s3: boto3.client) -> None:
-        """Test that delete_source_file calls the correct SharePoint method."""
-        with (
-            patch.object(
-                SharePointConnector, "update_with_file_path"
-            ) as mock_update_filepath,
-            patch.object(SharePointConnector, "delete_file") as mock_delete_object,
-        ):
-            upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine._delete_source_file(SP_FILE_PATH)
-
-        mock_update_filepath.assert_called_once_with(SP_FILE_PATH)
-        mock_delete_object.assert_called_once_with()
-
-    def test_upload_s3_archive_source_file(self, s3: boto3.client) -> None:
-        """archive_source_file copies sourceto archive folder path in SharePoint."""
-        archive_folder = "archive/reports/2026"
-
-        with (
-            patch.object(
-                SharePointConnector, "set_archive_url"
-            ) as mock_set_archive_url,
-            patch.object(SharePointConnector, "archive_file") as mock_archive_file,
-        ):
-            upload_s3_engine = self.setup_engine("s3", s3)
-            upload_s3_engine._archive_source_file(SP_FILE_PATH, archive_folder, 123)
-
-        mock_set_archive_url.assert_called_once_with(archive_folder)
-        mock_archive_file.assert_called_once_with(123)
+        assert target_url == f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}"
 
     def test_upload_s3_copy_empty_file(self, s3: boto3.client) -> None:
         """Copy calls archive_source_file when source_handling is archive."""
@@ -619,6 +615,7 @@ class TestEngines:
         assert result.content_size == 0
         assert result.source_handling == "archive"
         assert result.status == "skipped"
+        assert result.target_url == ""
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_validate.assert_called_once_with(
             source="reports/2026/file.csv", destination="path/to/file.csv"
@@ -632,7 +629,11 @@ class TestEngines:
                 "_download_file",
                 return_value=b"file content",
             ) as mock_download,
-            patch.object(engine.UploadToS3Engine, "_upload_file") as mock_upload_file,
+            patch.object(
+                engine.UploadToS3Engine,
+                "_upload_file",
+                return_value=f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}",
+            ) as mock_upload_file,
             patch.object(
                 engine.UploadToS3Engine, "_archive_source_file"
             ) as mock_archive_object,
@@ -651,6 +652,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == "archive"
         assert result.status == "success"
+        assert result.target_url == f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}"
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -693,7 +695,11 @@ class TestEngines:
                 "_download_file",
                 return_value=b"file content",
             ) as mock_download,
-            patch.object(engine.UploadToS3Engine, "_upload_file") as mock_upload_file,
+            patch.object(
+                engine.UploadToS3Engine,
+                "_upload_file",
+                return_value=f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}",
+            ) as mock_upload_file,
             patch.object(
                 engine.UploadToS3Engine, "_delete_source_file"
             ) as mock_delete_object,
@@ -711,6 +717,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == ("delete" if delete else "none")
         assert result.status == "success"
+        assert result.target_url == f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}"
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -728,7 +735,11 @@ class TestEngines:
                 "_download_file",
                 return_value=b"file content",
             ) as mock_download,
-            patch.object(engine.UploadToS3Engine, "_upload_file") as mock_upload_file,
+            patch.object(
+                engine.UploadToS3Engine,
+                "_upload_file",
+                return_value=f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}",
+            ) as mock_upload_file,
             patch.object(
                 engine.UploadToS3Engine, "_delete_source_file"
             ) as mock_delete_object,
@@ -744,6 +755,7 @@ class TestEngines:
         assert result.content_size == len(b"file content")
         assert result.source_handling == "none"
         assert result.status == "success"
+        assert result.target_url == f"s3://{S3_BUCKET_NAME}/{SP_FILE_PATH}"
         mock_download.assert_called_once_with("reports/2026/file.csv")
         mock_upload_file.assert_called_once_with(
             b"file content", "path/to/file.csv", len(b"file content")
@@ -752,3 +764,33 @@ class TestEngines:
             source="reports/2026/file.csv", destination="path/to/file.csv"
         )
         assert mock_delete_object.call_count == 0
+
+    def test_upload_s3_archive_source_file(self, s3: boto3.client) -> None:
+        """archive_source_file copies sourceto archive folder path in SharePoint."""
+        archive_folder = "archive/reports/2026"
+
+        with (
+            patch.object(
+                SharePointConnector, "set_archive_url"
+            ) as mock_set_archive_url,
+            patch.object(SharePointConnector, "archive_file") as mock_archive_file,
+        ):
+            upload_s3_engine = self.setup_engine("s3", s3)
+            upload_s3_engine._archive_source_file(SP_FILE_PATH, archive_folder, 123)
+
+        mock_set_archive_url.assert_called_once_with(archive_folder)
+        mock_archive_file.assert_called_once_with(123)
+
+    def test_upload_s3_delete_source_file(self, s3: boto3.client) -> None:
+        """Test that delete_source_file calls the correct SharePoint method."""
+        with (
+            patch.object(
+                SharePointConnector, "update_with_file_path"
+            ) as mock_update_filepath,
+            patch.object(SharePointConnector, "delete_file") as mock_delete_object,
+        ):
+            upload_s3_engine = self.setup_engine("s3", s3)
+            upload_s3_engine._delete_source_file(SP_FILE_PATH)
+
+        mock_update_filepath.assert_called_once_with(SP_FILE_PATH)
+        mock_delete_object.assert_called_once_with()

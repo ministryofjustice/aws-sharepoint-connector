@@ -859,7 +859,7 @@ def test_fetch_file_request_error() -> None:
             SP_FILE_PATH,
             (
                 "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-                "/root:/reports/2026/file1.csv:?$select=name,size,file"
+                "/root:/reports/2026/file1.csv:?$select=name,size,file,webUrl"
             ),
         ),
         (
@@ -867,7 +867,7 @@ def test_fetch_file_request_error() -> None:
             SP_FILE_PATH_NO_DIR,
             (
                 "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-                "/root:/file6.csv:?$select=name,size,file"
+                "/root:/file6.csv:?$select=name,size,file,webUrl"
             ),
         ),
         (
@@ -875,7 +875,7 @@ def test_fetch_file_request_error() -> None:
             SP_FILE_PATH,
             (
                 "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-                "/root:/archive/reports/2026/file1.csv:?$select=name,size,file"
+                "/root:/archive/reports/2026/file1.csv:?$select=name,size,file,webUrl"
             ),
         ),
     ],
@@ -903,7 +903,9 @@ def test_verify_uploaded_file_success(
         ) as mock_verify,
         caplog.at_level(logging.INFO, logger="s3-sharepoint"),
     ):
-        connector.verify_uploaded_file(expected_size, verify_type=verify_type)
+        target_url = connector.verify_uploaded_file(
+            expected_size, verify_type=verify_type
+        )
 
     assert (
         f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
@@ -915,6 +917,7 @@ def test_verify_uploaded_file_success(
         "Authorization": "Bearer fake-token",
         "Accept": "application/json",
     }
+    assert target_url == "https://contoso.sharepoint.com/sites/fake/file.csv"
 
 
 def test_verify_uploaded_file_empty(
@@ -936,7 +939,9 @@ def test_verify_uploaded_file_empty(
         ) as mock_verify,
         caplog.at_level(logging.INFO, logger="s3-sharepoint"),
     ):
-        connector.verify_uploaded_file(expected_size, verify_type="destination")
+        target_url = connector.verify_uploaded_file(
+            expected_size, verify_type="destination"
+        )
 
     assert (
         f"Verified SharePoint upload for '{file_name}' ({expected_size} bytes)."
@@ -945,12 +950,13 @@ def test_verify_uploaded_file_empty(
     assert mock_verify.call_count == 1
     assert mock_verify.call_args[0][0] == (
         "https://graph.microsoft.com/v1.0/drives/fake-drive-id"
-        "/root:/reports/2026/file1.csv:?$select=name,size,file"
+        "/root:/reports/2026/file1.csv:?$select=name,size,file,webUrl"
     )
     assert mock_verify.call_args[1]["headers"] == {
         "Authorization": "Bearer fake-token",
         "Accept": "application/json",
     }
+    assert target_url == "https://contoso.sharepoint.com/sites/fake/file.csv"
 
 
 def test_verify_uploaded_not_found() -> None:

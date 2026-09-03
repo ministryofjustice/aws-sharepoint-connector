@@ -7,7 +7,11 @@ from typing import Literal, TypedDict
 import boto3
 
 from aws_sharepoint_connector import create_engine
-from aws_sharepoint_connector.engine import UploadToS3Engine, UploadToSharePointEngine
+from aws_sharepoint_connector.engine import (
+    Result,
+    UploadToS3Engine,
+    UploadToSharePointEngine,
+)
 from aws_sharepoint_connector.exceptions import InvalidPathError, ProcessingError
 
 # Scenarios
@@ -28,15 +32,19 @@ def run_plans(
     archive_folder: str = "",
     *,
     source_handling: Literal["archive", "delete", "none"] = "none",
-) -> None:
+) -> list[Result]:
     """Run a list of file transfer plans using the given engine."""
+    results: list[Result] = []
     for plan in plans:
-        engine.copy(
+        result = engine.copy(
             source=plan["source"],
             destination=plan["destination"],
             archive_folder=archive_folder,
             source_handling=source_handling,
         )
+        results.append(result)
+
+    return results
 
 
 def setup_test_environment() -> tuple[UploadToSharePointEngine, UploadToS3Engine]:
@@ -82,7 +90,9 @@ def scenario_1(
         for i in range(1, 7)
     ]
 
-    run_plans(scenario_1_plan, s3_to_sharepoint_engine, source_handling="none")
+    results = run_plans(
+        scenario_1_plan, s3_to_sharepoint_engine, source_handling="none"
+    )
 
     s1_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
     s1_dest_files = sp_to_s3_engine.list_source_files(["scenario_1"])
@@ -110,6 +120,7 @@ def scenario_1(
             ]
         ):
             print("Test passed: All files are present in SharePoint.")
+            print(results[0].target_url)
         else:
             print("Test failed: Some files are missing in S3.")
             print("Found:", s1_source_files)
