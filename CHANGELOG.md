@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2]
+
+### Added
+
+- Added a `target_url` field to the `Result` object returned by `copy()`, populated
+  with the SharePoint `webUrl` for SharePoint destinations and the `s3://` URI for
+  S3 destinations.
+
+### Tests
+
+- Added unit and E2E coverage confirming `target_url` is generated and propagated
+  correctly for both the S3 and SharePoint engines.
+
+## [1.9.1] - 2026-07-29
+
+### Changed
+
+- SharePoint domain is no longer hardcoded and must now be passed explicitly to
+  `create_engine`.
+- Unpinned dependencies from specific versions.
+- Bumped the Docker Python base image.
+
+### Fixed
+
+- Fixed dependency version mismatches.
+- Empty files are now skipped when uploading to SharePoint, with a log message
+  alerting the user, instead of failing the transfer.
+
+### Tests
+
+- Added test coverage for the new domain input requirement and empty-file
+  handling behaviour.
+
 ## [1.9.0] - 2026-07-09
 
 ### Added
