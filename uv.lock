@@ -106,11 +106,11 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "azure-identity", specifier = "==1.24.0" },
-    { name = "boto3", specifier = "==1.43.0" },
-    { name = "pydantic", specifier = "==2.12.3" },
-    { name = "pydantic-settings", specifier = "==2.14.2" },
-    { name = "requests", specifier = "==2.32.4" },
+    { name = "azure-identity", specifier = ">=1.24.0" },
+    { name = "boto3", specifier = ">=1.43.0" },
+    { name = "pydantic", specifier = ">=2.12.3" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "requests", specifier = ">=2.32.4" },
 ]
 
 [package.metadata.requires-dev]

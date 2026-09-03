@@ -41,6 +41,8 @@ class Result:
         source_handling (Literal["archive", "delete", "none"]): How the source file
             was handled after transfer.
         status (str): 'success' to show copying was successful.
+        target_url (str): URL of the uploaded file (SharePoint ``webUrl`` or
+            ``s3://`` URI), empty if not populated (e.g. skipped transfers).
 
     """
 
@@ -49,6 +51,7 @@ class Result:
     content_size: int
     source_handling: Literal["archive", "delete", "none"]
     status: str
+    target_url: str = ""
 
 
 @dataclass
@@ -147,8 +150,13 @@ class Engine(ABC):
         """Download a file from the source storage."""
 
     @abstractmethod
-    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
-        """Upload a file to the destination storage."""
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> str:
+        """Upload a file to the destination storage.
+
+        Returns:
+            str: URL of the uploaded file (SharePoint ``webUrl`` or ``s3://`` URI).
+
+        """
 
     @abstractmethod
     def _archive_source_file(
@@ -193,7 +201,7 @@ class Engine(ABC):
                 status="skipped",
             )
 
-        self._upload_file(content, destination, content_size)
+        target_url = self._upload_file(content, destination, content_size)
         log.info(
             "Transfer workflow complete: '%s' -> '%s' (%s bytes transferred)",
             source,
@@ -211,6 +219,7 @@ class Engine(ABC):
             content_size=content_size,
             source_handling=source_handling,
             status="success",
+            target_url=target_url,
         )
 
     def copy(
@@ -403,13 +412,16 @@ class UploadToSharePointEngine(Engine):
         self.s3_connector.set_key(source)
         return self.s3_connector.download_from_s3()
 
-    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> str:
         """Upload a file to SharePoint.
 
         Args:
             content (bytes): The content of the file to upload as bytes.
             destination (str): The destination path in SharePoint.
             content_size (int): The size of the content in bytes.
+
+        Returns:
+            str: Browser-facing SharePoint URL of the uploaded file.
 
         Raises:
             FileSizeMismatchError: If the uploaded file does not match expected size.
@@ -427,7 +439,7 @@ class UploadToSharePointEngine(Engine):
         self.sharepoint_connector.upload_stream_in_chunks(
             BytesIO(content), content_size
         )
-        self.sharepoint_connector.verify_uploaded_file(
+        return self.sharepoint_connector.verify_uploaded_file(
             content_size,
             "destination",
         )
@@ -590,13 +602,16 @@ class UploadToS3Engine(Engine):
         self.sharepoint_connector.set_download_url()
         return self.sharepoint_connector.fetch_file()
 
-    def _upload_file(self, content: bytes, destination: str, content_size: int) -> None:
+    def _upload_file(self, content: bytes, destination: str, content_size: int) -> str:
         """Upload a file to S3 and verify the uploaded object.
 
         Args:
             content (bytes): The content of the file to upload as bytes.
             destination (str): The destination S3 key.
             content_size (int): The size of the content in bytes.
+
+        Returns:
+            str: The ``s3://`` URI of the uploaded object.
 
         Raises:
             ProcessingError: If the S3 upload or verification fails.
@@ -611,6 +626,7 @@ class UploadToS3Engine(Engine):
         self.s3_connector.set_key(destination)
         self.s3_connector.upload_to_s3(content)
         self.s3_connector.verify_uploaded_object(content_size, "destination")
+        return f"s3://{self.bucket.bucket}/{destination}"
 
     def _archive_source_file(
         self, source: str, archive_folder: str, content_size: int

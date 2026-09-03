@@ -479,7 +479,7 @@ class SharePointConnector(BaseModel):
         self,
         expected_size: int,
         verify_type: Literal["destination", "archive"],
-    ) -> None:
+    ) -> str:
         """Verify that the file was uploaded successfully to SharePoint.
 
         Args:
@@ -487,7 +487,7 @@ class SharePointConnector(BaseModel):
             verify_type (Literal["destination", "archive"]): Object being verified.
 
         Returns:
-            None
+            str: The browser-facing SharePoint URL (``webUrl``) of the uploaded file.
 
         Raises:
             FileSizeMismatchError: If the uploaded file does not match expected size.
@@ -501,10 +501,10 @@ class SharePointConnector(BaseModel):
         file_type = file_path.suffix.lstrip(".")
 
         if verify_type == "destination":
-            verify_url = f"{self.base_url}?$select=name,size,file"
+            verify_url = f"{self.base_url}?$select=name,size,file,webUrl"
         else:
             archive_item_url = self.archive_url.removesuffix("/content")
-            verify_url = f"{archive_item_url}?$select=name,size,file"
+            verify_url = f"{archive_item_url}?$select=name,size,file,webUrl"
 
         try:
             resp = request_with_retry(
@@ -544,6 +544,7 @@ not found in SharePoint."
             expected_name,
             expected_size,
         )
+        return str(item.get("webUrl", ""))
 
     def get_next_start(self, session: requests.Session) -> int:
         """Get the next starting byte position for uploading a chunk.
