@@ -388,7 +388,7 @@ def test_archive_object_success(connector: S3Connector, s3: boto3.client) -> Non
 
     connector.archive_object(content_size=len(data))
 
-    files = sorted(connector.list_objects())
+    files = connector.list_objects()
     actual_path = [file.path for file in files]
     assert actual_path == [archive_key]
 

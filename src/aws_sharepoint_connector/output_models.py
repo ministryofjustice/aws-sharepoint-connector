@@ -8,7 +8,7 @@ from datetime import datetime
 class FileObject:
     """Represent a file and its associated metadata."""
 
-    path: str | None
+    path: str
     name: str
     created_datetime: datetime | None
     last_modified_datetime: datetime | None

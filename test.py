@@ -97,8 +97,11 @@ def scenario_1(
     s1_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
     s1_dest_files = sp_to_s3_engine.list_source_files(["scenario_1"])
 
+    s1_source_paths = [file.path for file in s1_source_files]
+    s1_dest_paths = [file.path for file in s1_dest_files]
+
     if all(
-        file in s1_dest_files
+        file in s1_source_paths
         for file in [
             "scenario_1/sample_sp_file_1.csv",
             "scenario_1/sample_sp_file_2.csv",
@@ -109,7 +112,7 @@ def scenario_1(
         ]
     ):
         if all(
-            file in s1_source_files
+            file in s1_source_paths
             for file in [
                 "source/sample_s3_file_1.csv",
                 "source/sample_s3_file_2.csv",
@@ -123,10 +126,10 @@ def scenario_1(
             print(results[0].target_url)
         else:
             print("Test failed: Some files are missing in S3.")
-            print("Found:", s1_source_files)
+            print("Found:", s1_source_paths)
     else:
         print("Test failed: Some files are missing in SharePoint.")
-        print("Found:", s1_dest_files)
+        print("Found:", s1_source_paths)
 
 
 def scenario_2(
@@ -147,8 +150,11 @@ def scenario_2(
     s2_source_files = sp_to_s3_engine.list_source_files(["scenario_1"])
     s2_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
 
+    s2_source_paths = [file.path for file in s2_source_files]
+    s2_dest_paths = [file.path for file in s2_dest_files]
+
     if all(
-        file in s2_dest_files
+        file in s2_dest_paths
         for file in [
             "scenario_2/sample_s3_file_1.csv",
             "scenario_2/sample_s3_file_2.csv",
@@ -159,7 +165,7 @@ def scenario_2(
         ]
     ):
         if all(
-            file in s2_source_files
+            file in s2_source_paths
             for file in [
                 "scenario_1/sample_sp_file_1.csv",
                 "scenario_1/sample_sp_file_2.csv",
@@ -172,10 +178,10 @@ def scenario_2(
             print("Test passed: All files are present in S3.")
         else:
             print("Test failed: Some files are missing in S3.")
-            print("Found:", s2_dest_files)
+            print("Found:", s2_dest_paths)
     else:
         print("Test failed: Some files are missing in SharePoint.")
-        print("Found:", s2_source_files)
+        print("Found:", s2_source_paths)
 
 
 def scenario_3(
@@ -196,8 +202,11 @@ def scenario_3(
     s3_source_files = s3_to_sharepoint_engine.list_source_files(["scenario_2"])
     s3_dest_files = sp_to_s3_engine.list_source_files(["scenario_3"])
 
+    s3_source_paths = [file.path for file in s3_source_files]
+    s3_dest_paths = [file.path for file in s3_dest_files]
+
     if all(
-        file in s3_dest_files
+        file in s3_dest_paths
         for file in [
             "scenario_3/sample_sp_file_1.csv",
             "scenario_3/sample_sp_file_2.csv",
@@ -208,7 +217,7 @@ def scenario_3(
         ]
     ):
         if any(
-            file in s3_source_files
+            file in s3_source_paths
             for file in [
                 "scenario_2/sample_s3_file_1.csv",
                 "scenario_2/sample_s3_file_2.csv",
@@ -223,7 +232,7 @@ def scenario_3(
             print("Test passed: All source files were copied and deleted correctly.")
     else:
         print("Test failed: Some files are missing in SharePoint.")
-        print("Found:", s3_dest_files)
+        print("Found:", s3_dest_paths)
 
 
 def scenario_4(
@@ -244,8 +253,11 @@ def scenario_4(
     sp_source_files = sp_to_s3_engine.list_source_files(["scenario_3"])
     sp_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_4"])
 
+    sp_source_paths = [file.path for file in sp_source_files]
+    sp_dest_paths = [file.path for file in sp_dest_files]
+
     if all(
-        file in sp_dest_files
+        file in sp_dest_paths
         for file in [
             "scenario_4/sample_s3_file_1.csv",
             "scenario_4/sample_s3_file_2.csv",
@@ -256,7 +268,7 @@ def scenario_4(
         ]
     ):
         if any(
-            file in sp_source_files
+            file in sp_source_paths
             for file in [
                 "scenario_3/sample_sp_file_1.csv",
                 "scenario_3/sample_sp_file_2.csv",
@@ -271,7 +283,7 @@ def scenario_4(
             print("Test passed: All source files were copied and deleted correctly.")
     else:
         print("Test failed: Some files are missing in S3.")
-        print("Found:", sp_dest_files)
+        print("Found:", sp_dest_paths)
 
 
 def scenario_5(
@@ -295,8 +307,12 @@ def scenario_5(
     s5_archive_files = s3_to_sharepoint_engine.list_source_files(["archive"])
     s5_dest_files = sp_to_s3_engine.list_source_files(["scenario_5"])
 
+    s5_source_paths = [file.path for file in s5_source_files]
+    s5_dest_paths = [file.path for file in s5_dest_files]
+    s5_archive_paths = [file.path for file in s5_archive_files]
+
     if all(
-        file in s5_dest_files
+        file in s5_dest_paths
         for file in [
             "scenario_5/folder_1/sample_sp_file_1.csv",
             "scenario_5/folder_2/sample_sp_file_2.csv",
@@ -305,14 +321,14 @@ def scenario_5(
     ):
         if (
             all(
-                file in s5_archive_files
+                file in s5_archive_paths
                 for file in [
                     "archive/sample_s3_file_2.csv",
                     "archive/sample_s3_file_3.csv",
                 ]
             )
             and all(
-                file not in s5_source_files
+                file not in s5_source_paths
                 for file in [
                     "scenario_4/sample_s3_file_1.csv",
                     "scenario_4/sample_s3_file_2.csv",
@@ -320,7 +336,7 @@ def scenario_5(
                 ]
             )
             and all(
-                file in s5_source_files
+                file in s5_source_paths
                 for file in [
                     "scenario_4/sample_s3_file_4.csv",
                     "scenario_4/sample_s3_file_5.csv",
@@ -331,10 +347,10 @@ def scenario_5(
             print("Test passed: All files are present correctly in S3 and SharePoint.")
         else:
             print("Test failed: Some files were not archived correctly.")
-            print("Found:", s5_source_files)
+            print("Found:", s5_source_paths)
     else:
         print("Test failed: Some files are missing in SharePoint.")
-        print("Found:", s5_dest_files)
+        print("Found:", s5_dest_paths)
 
 
 def scenario_6(
@@ -356,8 +372,12 @@ def scenario_6(
     s6_archive_files = sp_to_s3_engine.list_source_files(["archive"])
     s6_dest_files = s3_to_sharepoint_engine.list_source_files(["scenario_6"])
 
+    s6_source_paths = [file.path for file in s6_source_files]
+    s6_archive_paths = [file.path for file in s6_archive_files]
+    s6_dest_paths = [file.path for file in s6_dest_files]
+
     if all(
-        file in s6_dest_files
+        file in s6_dest_paths
         for file in [
             "scenario_6/folder_1/sample_s3_file_1.csv",
             "scenario_6/folder_2/sample_s3_file_2.csv",
@@ -365,21 +385,21 @@ def scenario_6(
     ):
         if (
             all(
-                file in s6_archive_files
+                file in s6_archive_paths
                 for file in [
                     "archive/sample_sp_file_1.csv",
                     "archive/sample_sp_file_2.csv",
                 ]
             )
             and all(
-                file not in s6_source_files
+                file not in s6_source_paths
                 for file in [
                     "scenario_5/folder_1/sample_sp_file_1.csv",
                     "scenario_5/folder_2/sample_sp_file_2.csv",
                 ]
             )
             and all(
-                file in s6_source_files
+                file in s6_source_paths
                 for file in [
                     "scenario_5/folder_3/sample_sp_file_3.csv",
                 ]
@@ -388,10 +408,10 @@ def scenario_6(
             print("Test passed: All files are present correctly in S3 and SharePoint.")
         else:
             print("Test failed: Some files were not archived correctly.")
-            print("Found:", s6_source_files)
+            print("Found:", s6_source_paths)
     else:
         print("Test failed: Some files are missing in S3.")
-        print("Found:", s6_dest_files)
+        print("Found:", s6_dest_paths)
 
 
 def scenario_7(
@@ -486,8 +506,11 @@ def scenario_8(
     s8_source_files = s3_to_sharepoint_engine.list_source_files(["source"])
     s8_dest_files = sp_to_s3_engine.list_source_files(["scenario_8"])
 
+    s8_source_paths = [file.path for file in s8_source_files]
+    s8_dest_paths = [file.path for file in s8_dest_files]
+
     if all(
-        file in s8_dest_files
+        file in s8_dest_paths
         for file in [
             f"scenario_8/{ran_str}/sample_sp_file_1.csv",
             f"scenario_8/{ran_str}/sample_sp_file_2.csv",
@@ -496,7 +519,7 @@ def scenario_8(
         ]
     ):
         if all(
-            file in s8_source_files
+            file in s8_source_paths
             for file in [
                 "source/sample_s3_file_1.csv",
                 "source/sample_s3_file_2.csv",
@@ -507,10 +530,10 @@ def scenario_8(
             print("Test passed: All files are present correctly in S3 and SharePoint.")
         else:
             print("Test failed: Some files are missing in S3.")
-            print("Found:", s8_source_files)
+            print("Found:", s8_source_paths)
     else:
         print("Test failed: Some files are missing in SharePoint.")
-        print("Found:", s8_dest_files)
+        print("Found:", s8_dest_paths)
 
 
 def scenario_9(
@@ -553,12 +576,14 @@ def scenario_9(
         "scenario_9/s3_root/non standard (Ops)/child_one/deeper/metrics.JSON",
     ]
 
-    if sorted(s3_list) == sorted(expected_s3) and len(s3_list) == len(set(s3_list)):
+    s3_paths = [file.path for file in s3_list]
+    
+    if sorted(s3_paths) == sorted(expected_s3) and len(s3_paths) == len(set(s3_paths)):
         print("Test passed: S3 list_source_files returns exactly the expected files.")
     else:
         print("Test failed: S3 list_source_files did not return the exact set.")
         print("Expected:", sorted(expected_s3))
-        print("Found:", sorted(s3_list))
+        print("Found:", sorted(s3_paths))
 
     scenario_9_plan = [
         {
@@ -613,7 +638,9 @@ def scenario_9(
         "scenario_9/sp_root/non standard (Ops)/child_one/deeper/metrics.JSON",
     ]
 
-    if sorted(sp_list) == sorted(expected_sp) and len(sp_list) == len(set(sp_list)):
+    sp_paths = [file.path for file in sp_list]
+
+    if sorted(sp_paths) == sorted(expected_sp) and len(sp_paths) == len(set(sp_paths)):
         print(
             "Test passed: SharePoint list_source_files handles duplicate/overlapping "
             "folders and non-standard names correctly."
@@ -621,7 +648,7 @@ def scenario_9(
     else:
         print("Test failed: SharePoint list_source_files did not return the exact set.")
         print("Expected:", sorted(expected_sp))
-        print("Found:", sorted(sp_list))
+        print("Found:", sorted(sp_paths))
 
 
 def scenario_10(
