@@ -99,19 +99,22 @@ class TestEngines:
     def test_upload_sharepoint_list_source_files(self, s3: boto3.client) -> None:
         """list_source_files returns all S3 object keys from the source bucket."""
         with patch.object(
-            S3Connector, "list_objects", return_value=[
-    FileObject(
-        path="file1.csv",
-        name="file1.csv",
-        created_datetime=None,
-        last_modified_datetime=None,
-    ),
-    FileObject(
-        path="file2.csv",
-        name="file2.csv",
-        created_datetime=None,
-        last_modified_datetime=None,
-    )]
+            S3Connector,
+            "list_objects",
+            return_value=[
+                FileObject(
+                    path="file1.csv",
+                    name="file1.csv",
+                    created_datetime=None,
+                    last_modified_datetime=None,
+                ),
+                FileObject(
+                    path="file2.csv",
+                    name="file2.csv",
+                    created_datetime=None,
+                    last_modified_datetime=None,
+                ),
+            ],
         ) as mock_list:
             upload_sp_engine = self.setup_engine("sharepoint", s3)
             files = upload_sp_engine.list_source_files(
@@ -485,19 +488,22 @@ class TestEngines:
     def test_upload_s3_list_source_files(self, s3: boto3.client) -> None:
         """list_source_files returns all S3 object keys from the source bucket."""
         with patch.object(
-            SharePointConnector, "list_files", return_value=[
-    FileObject(
-        path="file1.csv",
-        name="file1.csv",
-        created_datetime=None,
-        last_modified_datetime=None,
-    ),
-    FileObject(
-        path="file2.csv",
-        name="file2.csv",
-        created_datetime=None,
-        last_modified_datetime=None,
-    )]
+            SharePointConnector,
+            "list_files",
+            return_value=[
+                FileObject(
+                    path="file1.csv",
+                    name="file1.csv",
+                    created_datetime=None,
+                    last_modified_datetime=None,
+                ),
+                FileObject(
+                    path="file2.csv",
+                    name="file2.csv",
+                    created_datetime=None,
+                    last_modified_datetime=None,
+                ),
+            ],
         ) as mock_list:
             upload_s3_engine = self.setup_engine("s3", s3)
             files = upload_s3_engine.list_source_files(
