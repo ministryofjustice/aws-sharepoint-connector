@@ -19,6 +19,7 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
+from aws_sharepoint_connector.output_models import File_Object
 from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.sharepoint import SharePointConnector
 from aws_sharepoint_connector.utils import (
@@ -104,7 +105,7 @@ class Engine(ABC):
         folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
-    ) -> list[str]:
+    ) -> list[File_Object]:
         """List files available in the source storage."""
 
     def list_source_files(
@@ -112,7 +113,7 @@ class Engine(ABC):
         search_folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
+    ) -> list[File_Object]:
         """List source files in the active source storage.
 
         Args:
@@ -307,8 +308,8 @@ class UploadToSharePointEngine(Engine):
         folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
-    ) -> list[str]:
-        """List source files in the S3 source bucket.
+    ) -> list[File_Object]:
+        """List all source file objects in the S3 source bucket.
 
         Args:
             folders (list[str] | None): Optional key/prefix filters
@@ -515,8 +516,8 @@ class UploadToS3Engine(Engine):
         folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
-        """List all file paths in the SharePoint source library.
+    ) -> list[File_Object]:
+        """List all file objects in the SharePoint source library.
 
         Args:
             folders (list[str] | None): Optional list of folders to search within

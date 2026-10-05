@@ -4,6 +4,7 @@ import logging
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Literal
+from unittest import result
 from unittest.mock import call, patch
 
 import pytest
@@ -434,7 +435,9 @@ def test_list_files_success(
         result = connector.list_files(
             folders=folders, include_ext=include_ext, exclude_ext=exclude_ext
         )
-    assert result == expected_files
+    actual_paths = [file.path for file in result]
+
+    assert actual_paths == expected_files
 
 
 @pytest.mark.parametrize(
@@ -454,9 +457,9 @@ def test_list_files_success(
                 "folder/nested/folder/deep.csv",
             ],
             [
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
             ],
         ),
         (
@@ -468,9 +471,9 @@ def test_list_files_success(
                 "folder/nested/inner.csv",
             ],
             [
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
             ],
         ),
         (
@@ -482,9 +485,9 @@ def test_list_files_success(
                 "folder/nested/folder/deep.csv",
             ],
             [
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder",
-                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
+                "https://graph.microsoft.com/v1.0/drives/fake-drive-id/root:/folder/nested/folder:/children?$select=name,folder,createdDateTime,lastModifiedDateTime",
             ],
         ),
     ],
@@ -521,8 +524,12 @@ def test_list_files_seed_traversal_behaviors(
     ) as mock_get:
         result = connector.list_files(folders=folders)
 
-    assert result == expected_files
+    actual_paths = [file.path for file in result]
+
+    assert actual_paths == expected_files
+
     actual_urls = [call_args.args[0] for call_args in mock_get.call_args_list]
+
     assert actual_urls == expected_urls
     assert len(actual_urls) == len(set(actual_urls))
 
@@ -538,8 +545,9 @@ def test_list_files_pagination() -> None:
         "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[page1, page2],
     ):
-        result = connector.list_files()
-    assert result == ["a.csv", "b.csv", "c.csv"]
+        files = connector.list_files()
+    actual_paths = [file.path for file in files]
+    assert actual_paths == ["a.csv", "b.csv", "c.csv"]
 
 
 def test_list_files_recurses_into_folders() -> None:
@@ -557,9 +565,10 @@ def test_list_files_recurses_into_folders() -> None:
         "aws_sharepoint_connector.sharepoint.requests.get",
         side_effect=[root_page, child_page],
     ):
-        result = connector.list_files()
+        files = connector.list_files()
 
-    assert result == ["scenario_1/a.csv", "scenario_1/b.csv"]
+    actual_paths = [file.path for file in files]
+    assert actual_paths == ["scenario_1/a.csv", "scenario_1/b.csv"]
 
 
 def test_list_files_request_error() -> None:

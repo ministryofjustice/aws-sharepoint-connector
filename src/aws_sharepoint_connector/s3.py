@@ -7,6 +7,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ConfigDict, Field
 
 from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
+from aws_sharepoint_connector.output_models import File_Object
 from aws_sharepoint_connector.utils import normalise_extension, setup_logger
 
 log = setup_logger()
@@ -35,7 +36,7 @@ class S3Connector(BaseModel):
         prefixes: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
+    ) -> list[File_Object]:
         """List all object keys in the S3 bucket.
 
         Handles pagination automatically and can be filtered to include specific
@@ -51,7 +52,7 @@ class S3Connector(BaseModel):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All object keys in the bucket matching any specified filters.
+            list[File_Object]: A list of File_Object instances representing the objects in the bucket.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -70,7 +71,7 @@ class S3Connector(BaseModel):
             [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
         )
 
-        keys: list[str] = []
+        keys: list[File_Object] = []
         kwargs: dict[str, Any] = {"Bucket": self.bucket}
 
         # Use a sentinel prefix to run a single unscoped list operation when callers
@@ -88,6 +89,8 @@ class S3Connector(BaseModel):
                         key = obj["Key"]
                         if key in keys:
                             continue
+                        if key in [file.path for file in keys]:
+                            continue
                         if key.endswith("/"):  # skip S3 folder-marker objects
                             continue
                         ext = normalise_extension(PurePosixPath(key).suffix)
@@ -95,7 +98,10 @@ class S3Connector(BaseModel):
                             continue
                         if exclude_ext and ext in exclude_ext:
                             continue
-                        keys.append(key)
+                        keys.append(File_Object(path = key,
+                                                name=PurePosixPath(key).name,
+                                                created_datetime= None, 
+                                                last_modified_datetime=obj.get("LastModified")))
                     if not response.get("IsTruncated"):
                         break
                     kwargs["ContinuationToken"] = response["NextContinuationToken"]
