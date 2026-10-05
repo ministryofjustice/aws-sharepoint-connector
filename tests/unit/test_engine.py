@@ -13,8 +13,8 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
-from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.output_models import FileObject
+from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -111,7 +111,7 @@ class TestEngines:
         name="file2.csv",
         created_datetime=None,
         last_modified_datetime=None,
-    ),]
+    )]
         ) as mock_list:
             upload_sp_engine = self.setup_engine("sharepoint", s3)
             files = upload_sp_engine.list_source_files(
@@ -123,7 +123,7 @@ class TestEngines:
         actual_paths = [file.path for file in files]
 
         assert actual_paths == ["file1.csv", "file2.csv"]
-        
+
         mock_list.assert_called_once_with(
             prefixes=["folder", "other/folder", "another/folder"],
             include_ext=["csv", "csv"],
@@ -497,7 +497,7 @@ class TestEngines:
         name="file2.csv",
         created_datetime=None,
         last_modified_datetime=None,
-    ),]
+    )]
         ) as mock_list:
             upload_s3_engine = self.setup_engine("s3", s3)
             files = upload_s3_engine.list_source_files(

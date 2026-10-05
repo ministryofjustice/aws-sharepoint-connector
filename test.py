@@ -101,7 +101,7 @@ def scenario_1(
     s1_dest_paths = [file.path for file in s1_dest_files]
 
     if all(
-        file in s1_source_paths
+        file in s1_dest_paths
         for file in [
             "scenario_1/sample_sp_file_1.csv",
             "scenario_1/sample_sp_file_2.csv",
@@ -577,7 +577,7 @@ def scenario_9(
     ]
 
     s3_paths = [file.path for file in s3_list]
-    
+
     if sorted(s3_paths) == sorted(expected_s3) and len(s3_paths) == len(set(s3_paths)):
         print("Test passed: S3 list_source_files returns exactly the expected files.")
     else:
