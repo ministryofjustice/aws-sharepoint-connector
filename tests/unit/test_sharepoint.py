@@ -4,7 +4,6 @@ import logging
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Literal
-from unittest import result
 from unittest.mock import call, patch
 
 import pytest

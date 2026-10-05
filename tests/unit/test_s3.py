@@ -1,9 +1,6 @@
 """Unit tests for the s3 module."""
 
-from importlib.resources import files
 from typing import Literal
-from unittest import result
-from unittest import result
 from unittest.mock import patch
 
 import boto3
@@ -139,9 +136,8 @@ def test_list_objects_success(  # noqa: PLR0913, PLR0917
     s3.put_object(Bucket="excluded-bucket", Key="should/never/appear.csv", Body=b"data")
 
     result = connector.list_objects(
-    prefixes=prefixes,
-    include_ext=include_ext,
-    exclude_ext=exclude_ext,)
+        prefixes=prefixes, include_ext=include_ext, exclude_ext=exclude_ext
+    )
     actual_keys = [file.path for file in result]
 
     assert sorted(actual_keys) == sorted(expected_keys)
@@ -161,10 +157,8 @@ def test_list_objects_skips_folder_markers(
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/", Body=b"")
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
-    result = connector.list_objects() 
-    actual_paths = []
-    for file in result:
-        actual_paths.append(file.path)
+    files = connector.list_objects()
+    actual_paths = [file.path for file in files]
     assert actual_paths == ["include/a.csv"]
 
 
@@ -175,10 +169,8 @@ def test_list_objects_extension_filter_is_case_insensitive(
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.CSV", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/b.Xlsx", Body=b"data")
-    result = connector.list_objects(include_ext=[".csv"]) 
-    actual_paths = []
-    for file in result:
-        actual_paths.append(file.path)
+    files = connector.list_objects(include_ext=[".csv"])
+    actual_paths = [file.path for file in files]
     assert actual_paths == ["include/a.CSV"]
 
 
@@ -190,7 +182,7 @@ def test_list_objects_key_without_extension(
     s3.put_object(Bucket=S3_BUCKET, Key="include/README", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
 
-    include_result = connector.list_objects(include_ext=["csv"]) 
+    include_result = connector.list_objects(include_ext=["csv"])
     exclude_result = connector.list_objects(exclude_ext=["csv"])
 
     include_paths = [file.path for file in include_result]
@@ -220,7 +212,7 @@ def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> No
     with patch.object(s3, "list_objects_v2", side_effect=[page1, page2]):
         files = connector.list_objects()
 
-    actual_paths = actual_paths = [file.path for file in files]
+    actual_paths = [file.path for file in files]
     assert actual_paths == ["include/a.csv", "include/b.csv", "include/c.csv"]
 
 

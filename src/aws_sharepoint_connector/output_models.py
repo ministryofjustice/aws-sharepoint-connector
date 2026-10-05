@@ -1,8 +1,13 @@
+"""Output models returned by connector operations."""
+
 from dataclasses import dataclass
 from datetime import datetime
 
+
 @dataclass(frozen=True)
-class File_Object:
+class FileObject:
+    """Represent a file and its associated metadata."""
+
     path: str | None
     name: str
     created_datetime: datetime | None

@@ -34,7 +34,7 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
-from aws_sharepoint_connector.output_models import File_Object
+from aws_sharepoint_connector.output_models import FileObject
 from aws_sharepoint_connector.utils import (
     build_retry_session,
     normalise_extension,
@@ -237,7 +237,7 @@ class SharePointConnector(BaseModel):
         folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[File_Object]:
+    ) -> list[FileObject]:
         """List all files in the SharePoint library, including subfolders.
 
         Handles pagination automatically at every folder level.
@@ -251,7 +251,7 @@ class SharePointConnector(BaseModel):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[File_Object]: File objects with metadata.
+            list[FileObject]: File objects with metadata.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -269,7 +269,7 @@ class SharePointConnector(BaseModel):
             [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
         )
 
-        files: list[File_Object] = []
+        files: list[FileObject] = []
         folder_paths: deque[str] = deque(folders or [""])
         visited_folders: set[str] = set()
 
@@ -314,11 +314,12 @@ class SharePointConnector(BaseModel):
                             if exclude_ext and ext in exclude_ext:
                                 continue
 
-                            file_details = File_Object(
+                            file_details = FileObject(
                                 name=name,
                                 path=item_path,
                                 created_datetime=item.get("createdDateTime"),
-                                last_modified_datetime=item.get("lastModifiedDateTime"),)
+                                last_modified_datetime=item.get("lastModifiedDateTime"),
+                            )
                             files.append(file_details)
 
                     next_url = data.get("@odata.nextLink")
