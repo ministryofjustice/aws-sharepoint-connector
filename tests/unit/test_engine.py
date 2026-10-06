@@ -123,9 +123,7 @@ class TestEngines:
                 [".XlSx"],
             )
 
-        actual_paths = [file.path for file in files]
-
-        assert actual_paths == ["file1.csv", "file2.csv"]
+        assert [file.path for file in files] == ["file1.csv", "file2.csv"]
 
         mock_list.assert_called_once_with(
             prefixes=["folder", "other/folder", "another/folder"],
@@ -512,8 +510,7 @@ class TestEngines:
                 [".XlSx"],
             )
 
-        actual_paths = [file.path for file in files]
-        assert actual_paths == ["file1.csv", "file2.csv"]
+        assert [file.path for file in files] == ["file1.csv", "file2.csv"]
 
         mock_list.assert_called_once_with(
             folders=["folder", "other/folder", "another/folder"],

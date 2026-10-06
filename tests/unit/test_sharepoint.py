@@ -1,6 +1,7 @@
 """Unit tests for the sharepoint module."""
 
 import logging
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Literal
@@ -20,6 +21,7 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
+from aws_sharepoint_connector.output_models import FileObject
 from aws_sharepoint_connector.sharepoint import SharePointConnector
 from tests import test_utils as utils
 
@@ -434,9 +436,38 @@ def test_list_files_success(
         result = connector.list_files(
             folders=folders, include_ext=include_ext, exclude_ext=exclude_ext
         )
-    actual_paths = [file.path for file in result]
+    assert [file.path for file in result] == expected_files
 
-    assert actual_paths == expected_files
+
+def test_list_files_returns_file_object_metadata() -> None:
+    """list_files returns the expected file metadata."""
+    connector = make_connector()
+    response = utils.build_response(
+        status_code=200,
+        json_body={
+            "value": [
+                {
+                    "name": "a.csv",
+                    "createdDateTime": "2026-01-01T10:00:00Z",
+                    "lastModifiedDateTime": "2026-01-01T10:00:01Z",
+                }
+            ]
+        },
+    )
+    with patch(
+        "aws_sharepoint_connector.sharepoint.requests.get",
+        return_value=response,
+    ):
+        result = connector.list_files()
+        assert len(result) == 1
+        actual_file = result[0]
+        expected_result = FileObject(
+            name="a.csv",
+            path="a.csv",
+            created_datetime=datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC),
+            last_modified_datetime=datetime(2026, 1, 1, 10, 0, 1, tzinfo=UTC),
+        )
+    assert actual_file == expected_result
 
 
 @pytest.mark.parametrize(
@@ -523,9 +554,7 @@ def test_list_files_seed_traversal_behaviors(
     ) as mock_get:
         result = connector.list_files(folders=folders)
 
-    actual_paths = [file.path for file in result]
-
-    assert actual_paths == expected_files
+    assert [file.path for file in result] == expected_files
 
     actual_urls = [call_args.args[0] for call_args in mock_get.call_args_list]
 
@@ -545,8 +574,7 @@ def test_list_files_pagination() -> None:
         side_effect=[page1, page2],
     ):
         files = connector.list_files()
-    actual_paths = [file.path for file in files]
-    assert actual_paths == ["a.csv", "b.csv", "c.csv"]
+    assert [file.path for file in files] == ["a.csv", "b.csv", "c.csv"]
 
 
 def test_list_files_recurses_into_folders() -> None:
@@ -566,8 +594,7 @@ def test_list_files_recurses_into_folders() -> None:
     ):
         files = connector.list_files()
 
-    actual_paths = [file.path for file in files]
-    assert actual_paths == ["scenario_1/a.csv", "scenario_1/b.csv"]
+    assert [file.path for file in files] == ["scenario_1/a.csv", "scenario_1/b.csv"]
 
 
 def test_list_files_request_error() -> None:

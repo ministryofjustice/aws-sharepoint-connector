@@ -2,6 +2,7 @@
 
 import logging
 from collections import deque
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -317,8 +318,18 @@ class SharePointConnector(BaseModel):
                             file_details = FileObject(
                                 name=name,
                                 path=item_path,
-                                created_datetime=item.get("createdDateTime"),
-                                last_modified_datetime=item.get("lastModifiedDateTime"),
+                                created_datetime=(
+                                    datetime.fromisoformat(item.get("createdDateTime"))
+                                    if item.get("createdDateTime")
+                                    else None
+                                ),
+                                last_modified_datetime=(
+                                    datetime.fromisoformat(
+                                        item.get("lastModifiedDateTime")
+                                    )
+                                    if item.get("lastModifiedDateTime")
+                                    else None
+                                ),
                             )
                             files.append(file_details)
 

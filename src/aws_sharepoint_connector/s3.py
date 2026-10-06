@@ -88,8 +88,6 @@ class S3Connector(BaseModel):
                     response = self.client.list_objects_v2(**kwargs)
                     for obj in response.get("Contents", []):
                         key = obj["Key"]
-                        if key in keys:
-                            continue
                         if key in [file.path for file in keys]:
                             continue
                         if key.endswith("/"):  # skip S3 folder-marker objects

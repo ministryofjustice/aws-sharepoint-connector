@@ -1,13 +1,16 @@
 """Unit tests for the s3 module."""
 
+from datetime import UTC, datetime
 from typing import Literal
 from unittest.mock import patch
 
 import boto3
 import pytest
 from botocore.exceptions import BotoCoreError, ClientError
+from freezegun import freeze_time
 
 from aws_sharepoint_connector.exceptions import FileSizeMismatchError, ProcessingError
+from aws_sharepoint_connector.output_models import FileObject
 from aws_sharepoint_connector.s3 import S3Connector
 from tests import test_utils as utils
 
@@ -143,6 +146,30 @@ def test_list_objects_success(  # noqa: PLR0913, PLR0917
     assert sorted(actual_keys) == sorted(expected_keys)
 
 
+def test_list_objects_returns_file_object_metadata(
+    connector: S3Connector,
+    s3: boto3.client,
+) -> None:
+    """list_objects returns the expected file metadata."""
+    utils.create_bucket(S3_BUCKET, s3)
+    with freeze_time("2026-01-01 10:00:00") as frozen_time:
+        s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+        frozen_time.tick(delta=1)  # advance time by 1 second
+        s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"updated_data")
+
+    result = connector.list_objects(prefixes=["include/"])
+    assert len(result) == 1
+    actual_file = result[0]
+    expected_file = FileObject(
+        name="a.csv",
+        path="include/a.csv",
+        created_datetime=None,
+        last_modified_datetime=datetime(2026, 1, 1, 10, 0, 1, tzinfo=UTC),
+    )
+
+    assert actual_file == expected_file
+
+
 def test_list_objects_empty_bucket(connector: S3Connector, s3: boto3.client) -> None:
     """list_objects returns an empty list for a bucket with no objects."""
     utils.create_bucket(S3_BUCKET, s3)
@@ -157,9 +184,7 @@ def test_list_objects_skips_folder_markers(
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/", Body=b"")
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
-    files = connector.list_objects()
-    actual_paths = [file.path for file in files]
-    assert actual_paths == ["include/a.csv"]
+    assert [file.path for file in connector.list_objects()] == ["include/a.csv"]
 
 
 def test_list_objects_extension_filter_is_case_insensitive(
@@ -169,9 +194,9 @@ def test_list_objects_extension_filter_is_case_insensitive(
     utils.create_bucket(S3_BUCKET, s3)
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.CSV", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/b.Xlsx", Body=b"data")
-    files = connector.list_objects(include_ext=[".csv"])
-    actual_paths = [file.path for file in files]
-    assert actual_paths == ["include/a.CSV"]
+    assert [file.path for file in connector.list_objects(include_ext=[".csv"])] == [
+        "include/a.CSV"
+    ]
 
 
 def test_list_objects_key_without_extension(
@@ -182,14 +207,12 @@ def test_list_objects_key_without_extension(
     s3.put_object(Bucket=S3_BUCKET, Key="include/README", Body=b"data")
     s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
 
-    include_result = connector.list_objects(include_ext=["csv"])
-    exclude_result = connector.list_objects(exclude_ext=["csv"])
-
-    include_paths = [file.path for file in include_result]
-    exclude_paths = [file.path for file in exclude_result]
-
-    assert include_paths == ["include/a.csv"]
-    assert exclude_paths == ["include/README"]
+    assert [file.path for file in connector.list_objects(include_ext=["csv"])] == [
+        "include/a.csv"
+    ]
+    assert [file.path for file in connector.list_objects(exclude_ext=["csv"])] == [
+        "include/README"
+    ]
 
 
 def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> None:
@@ -212,8 +235,11 @@ def test_list_objects_pagination(connector: S3Connector, s3: boto3.client) -> No
     with patch.object(s3, "list_objects_v2", side_effect=[page1, page2]):
         files = connector.list_objects()
 
-    actual_paths = [file.path for file in files]
-    assert actual_paths == ["include/a.csv", "include/b.csv", "include/c.csv"]
+    assert [file.path for file in files] == [
+        "include/a.csv",
+        "include/b.csv",
+        "include/c.csv",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -388,9 +414,7 @@ def test_archive_object_success(connector: S3Connector, s3: boto3.client) -> Non
 
     connector.archive_object(content_size=len(data))
 
-    files = connector.list_objects()
-    actual_path = [file.path for file in files]
-    assert actual_path == [archive_key]
+    assert [file.path for file in connector.list_objects()] == [archive_key]
 
 
 def test_archive_object_copy_error(connector: S3Connector, s3: boto3.client) -> None:
@@ -415,10 +439,9 @@ def test_archive_object_copy_error(connector: S3Connector, s3: boto3.client) -> 
         connector.archive_object(content_size=6)
 
     files = connector.list_objects()
-    actual_paths = [file.path for file in files]
 
-    assert S3_KEY in actual_paths
-    assert archive_key not in actual_paths
+    assert S3_KEY in [file.path for file in files]
+    assert archive_key not in [file.path for file in files]
 
 
 def test_archive_object_delete_error(connector: S3Connector, s3: boto3.client) -> None:
@@ -444,10 +467,9 @@ def test_archive_object_delete_error(connector: S3Connector, s3: boto3.client) -
         connector.archive_object(content_size=len(data))
 
     files = connector.list_objects()
-    actual_paths = [file.path for file in files]
 
-    assert S3_KEY in actual_paths
-    assert archive_key in actual_paths
+    assert S3_KEY in [file.path for file in files]
+    assert archive_key in [file.path for file in files]
 
 
 def test_check_bucket_exists_success(connector: S3Connector, s3: boto3.client) -> None:
