@@ -101,7 +101,7 @@ class S3Connector(BaseModel):
                             FileObject(
                                 path=key,
                                 name=PurePosixPath(key).name,
-                                created_datetime=None,
+                                created_datetime=obj.get("LastModified"),
                                 last_modified_datetime=obj.get("LastModified"),
                             )
                         )

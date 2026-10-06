@@ -154,20 +154,31 @@ def test_list_objects_returns_file_object_metadata(
     utils.create_bucket(S3_BUCKET, s3)
     with freeze_time("2026-01-01 10:00:00") as frozen_time:
         s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"data")
+        initial_result = connector.list_objects(prefixes=["include/"])
+        assert len(initial_result) == 1
+        initial_file = initial_result[0]
+        expected_initial_file = FileObject(
+            name="a.csv",
+            path="include/a.csv",
+            created_datetime=datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC),
+            last_modified_datetime=datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC),
+        )
+        assert initial_file == expected_initial_file
+
         frozen_time.tick(delta=1)  # advance time by 1 second
         s3.put_object(Bucket=S3_BUCKET, Key="include/a.csv", Body=b"updated_data")
 
-    result = connector.list_objects(prefixes=["include/"])
-    assert len(result) == 1
-    actual_file = result[0]
-    expected_file = FileObject(
-        name="a.csv",
-        path="include/a.csv",
-        created_datetime=None,
-        last_modified_datetime=datetime(2026, 1, 1, 10, 0, 1, tzinfo=UTC),
-    )
+        updated_result = connector.list_objects(prefixes=["include/"])
+        assert len(updated_result) == 1
+        updated_file = updated_result[0]
+        updated_expected_file = FileObject(
+            name="a.csv",
+            path="include/a.csv",
+            created_datetime=datetime(2026, 1, 1, 10, 0, 1, tzinfo=UTC),
+            last_modified_datetime=datetime(2026, 1, 1, 10, 0, 1, tzinfo=UTC),
+        )
 
-    assert actual_file == expected_file
+        assert updated_file == updated_expected_file
 
 
 def test_list_objects_empty_bucket(connector: S3Connector, s3: boto3.client) -> None:
