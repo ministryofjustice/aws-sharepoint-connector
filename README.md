@@ -87,7 +87,7 @@ You will require a Sharepoint site to serve as the source or destination for fil
 
 ## Quick start
 
-Install aws-sharepoint-connector from pypi and run the below (changing parameters to fit your s3 bucket, SharePoint site and files), you will also need to supply the secrets detailed below in [Configuration and setup](#configuration-and-step)
+Install aws-sharepoint-connector from pypi and run the below (changing parameters to fit your s3 bucket, SharePoint site and files), you will also need to supply the secrets detailed below in [Configuration and setup](#configuration-and-setup)
 
 
 ```python
@@ -177,7 +177,7 @@ Returns a `Result` instance containing details of the transfer:
 | `destination` | string | Destination file path (S3 key or SharePoint path). |
 | `content_size` | int | Size of the transferred content in bytes. |
 | `source_handling` | string | Source-handling mode: `"none"`, `"delete"`, or `"archive"`. |
-| `status` | string | `"success"` when the transfer workflow completes. |
+| `status` | string | `"success"` when the transfer workflow completes, or `"skipped"` when the source file is empty and no upload or source handling is performed. |
 | `target_url` | string | SharePoint file's `webUrl` or the destination's `s3://` URI. Empty when no destination URL is produced, such as for a skipped empty-file upload. |
 
 ---
@@ -267,7 +267,7 @@ All Graph API and HTTP calls use `request_with_retry()`:
 - **Max 3 attempts** per request
 - **Retryable errors**: 429 Too Many Requests, 5xx Server Errors
 - **Non-retryable errors**: 4xx Client Errors (except 429)
-- **Exponential backoff** between retries
+- **Linear backoff** between retries: 0.5 seconds before the second attempt and 1 second before the third attempt
 
 ### Batch Processing Behavior
 
@@ -280,7 +280,7 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 1. Create a new engine class in `src/aws_sharepoint_connector/engine.py` implementing:
     - `_list_source_files(self, folders: list[str], include_ext: list[str], exclude_ext: list[str]) -> list[FileObject]`
     - `_download_file(self, source: str) -> bytes`
-    - `_upload_file(self, content: bytes, destination: str, content_size: int) -> None`
+    - `_upload_file(self, content: bytes, destination: str, content_size: int) -> str`
     - `_archive_source_file(self, source: str, archive_folder: str, content_size: int) -> None`
     - `_delete_source_file(self, source: str) -> None`
     - `_validate_plan(self, source: str, destination: str) -> None`

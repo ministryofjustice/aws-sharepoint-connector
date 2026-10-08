@@ -106,7 +106,9 @@ def request_with_retry(
     max_attempts: int = 3,
     **kwargs: Any,  # noqa: ANN401
 ) -> requests.Response:
-    """Issue a request with bounded retries for transient failures.
+    """Issue a request with bounded retries and linear backoff.
+
+    Wait 0.5 seconds multiplied by the failed attempt number before retrying.
 
     Args:
         method (Literal["GET", "POST", "DELETE"]): The HTTP method to use

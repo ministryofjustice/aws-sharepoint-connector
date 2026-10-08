@@ -41,7 +41,8 @@ class Result:
         content_size (int): The size of the transferred content in bytes.
         source_handling (Literal["archive", "delete", "none"]): How the source file
             was handled after transfer.
-        status (str): 'success' to show copying was successful.
+        status (str): 'success' when the transfer workflow completes, or 'skipped'
+            when the source is empty and no upload or source handling is performed.
         target_url (str): URL of the uploaded file (SharePoint ``webUrl`` or
             ``s3://`` URI), empty if not populated (e.g. skipped transfers).
 
@@ -126,7 +127,8 @@ class Engine(ABC):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: Matching source file paths relative to bucket/library root.
+            list[FileObject]: Matching source files with names, paths relative to
+                the bucket/library root, and creation and last-modified timestamps.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -321,7 +323,8 @@ class UploadToSharePointEngine(Engine):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: Matching object keys in the S3 source bucket.
+            list[FileObject]: Matching S3 objects with names, keys, and timestamps.
+                Both timestamps use S3's last-modified time.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -528,7 +531,8 @@ class UploadToS3Engine(Engine):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All file paths in the SharePoint source library.
+            list[FileObject]: Matching SharePoint files with names, paths relative
+                to the library root, and creation and last-modified timestamps.
 
         Raises:
             ProcessingError: If the listing request fails.
