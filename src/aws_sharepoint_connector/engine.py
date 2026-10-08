@@ -19,6 +19,7 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
+from aws_sharepoint_connector.output_models import FileObject
 from aws_sharepoint_connector.s3 import S3Connector
 from aws_sharepoint_connector.sharepoint import SharePointConnector
 from aws_sharepoint_connector.utils import (
@@ -40,7 +41,8 @@ class Result:
         content_size (int): The size of the transferred content in bytes.
         source_handling (Literal["archive", "delete", "none"]): How the source file
             was handled after transfer.
-        status (str): 'success' to show copying was successful.
+        status (str): 'success' when the transfer workflow completes, or 'skipped'
+            when the source is empty and no upload or source handling is performed.
         target_url (str): URL of the uploaded file (SharePoint ``webUrl`` or
             ``s3://`` URI), empty if not populated (e.g. skipped transfers).
 
@@ -104,7 +106,7 @@ class Engine(ABC):
         folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
-    ) -> list[str]:
+    ) -> list[FileObject]:
         """List files available in the source storage."""
 
     def list_source_files(
@@ -112,7 +114,7 @@ class Engine(ABC):
         search_folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
+    ) -> list[FileObject]:
         """List source files in the active source storage.
 
         Args:
@@ -125,7 +127,8 @@ class Engine(ABC):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: Matching source file paths relative to bucket/library root.
+            list[FileObject]: Matching source files with names, paths relative to
+                the bucket/library root, and creation and last-modified timestamps.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -307,8 +310,8 @@ class UploadToSharePointEngine(Engine):
         folders: list[str],
         include_ext: list[str],
         exclude_ext: list[str],
-    ) -> list[str]:
-        """List source files in the S3 source bucket.
+    ) -> list[FileObject]:
+        """List all source file objects in the S3 source bucket.
 
         Args:
             folders (list[str] | None): Optional key/prefix filters
@@ -320,7 +323,8 @@ class UploadToSharePointEngine(Engine):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: Matching object keys in the S3 source bucket.
+            list[FileObject]: Matching S3 objects with names, keys, and timestamps.
+                Both timestamps use S3's last-modified time.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -515,8 +519,8 @@ class UploadToS3Engine(Engine):
         folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
-        """List all file paths in the SharePoint source library.
+    ) -> list[FileObject]:
+        """List all file objects in the SharePoint source library.
 
         Args:
             folders (list[str] | None): Optional list of folders to search within
@@ -527,7 +531,8 @@ class UploadToS3Engine(Engine):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: All file paths in the SharePoint source library.
+            list[FileObject]: Matching SharePoint files with names, paths relative
+                to the library root, and creation and last-modified timestamps.
 
         Raises:
             ProcessingError: If the listing request fails.

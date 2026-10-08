@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "aws-sharepoint-connector"
-version = "1.9.2"
+version = "1.10.0"
 description = "Provides a connector via Graph API between AWS and SharePoint"
 authors = [
     { name = "Philip Sinfield"},
@@ -25,6 +25,7 @@ Repository = "https://github.com/ministryofjustice/aws-sharepoint-connector"
 
 [dependency-groups]
 dev = [
+    "freezegun>=1.5.5",
     "mypy>=2.2.0",
     "pre-commit>=4.0.0",
     "ruff>=0.16.0",

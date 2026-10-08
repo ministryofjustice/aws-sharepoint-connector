@@ -2,6 +2,7 @@
 
 import logging
 from collections import deque
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -34,6 +35,7 @@ from aws_sharepoint_connector.exceptions import (
     ObjectNotFoundError,
     ProcessingError,
 )
+from aws_sharepoint_connector.output_models import FileObject
 from aws_sharepoint_connector.utils import (
     build_retry_session,
     normalise_extension,
@@ -236,7 +238,7 @@ class SharePointConnector(BaseModel):
         folders: list[str] | None = None,
         include_ext: list[str] | None = None,
         exclude_ext: list[str] | None = None,
-    ) -> list[str]:
+    ) -> list[FileObject]:
         """List all files in the SharePoint library, including subfolders.
 
         Handles pagination automatically at every folder level.
@@ -250,7 +252,7 @@ class SharePointConnector(BaseModel):
                 (e.g. ``[".tmp", ".bak"]``).
 
         Returns:
-            list[str]: File paths relative to the library root.
+            list[FileObject]: File objects with metadata.
 
         Raises:
             ProcessingError: If the listing request fails.
@@ -258,7 +260,7 @@ class SharePointConnector(BaseModel):
         """
         root_url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
-            f"/root/children?$select=name,folder"
+            f"/root/children?$select=name,folder,createdDateTime,lastModifiedDateTime"
         )
 
         include_ext = (
@@ -268,7 +270,7 @@ class SharePointConnector(BaseModel):
             [normalise_extension(ext) for ext in exclude_ext] if exclude_ext else []
         )
 
-        file_paths: list[str] = []
+        files: list[FileObject] = []
         folder_paths: deque[str] = deque(folders or [""])
         visited_folders: set[str] = set()
 
@@ -278,7 +280,7 @@ class SharePointConnector(BaseModel):
             encoded_path = quote(folder_path, safe="/")
             return (
                 f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
-                f"/root:/{encoded_path}:/children?$select=name,folder"
+                f"/root:/{encoded_path}:/children?$select=name,folder,createdDateTime,lastModifiedDateTime"
             )
 
         try:
@@ -312,7 +314,24 @@ class SharePointConnector(BaseModel):
                                 continue
                             if exclude_ext and ext in exclude_ext:
                                 continue
-                            file_paths.append(item_path)
+
+                            file_details = FileObject(
+                                name=name,
+                                path=item_path,
+                                created_datetime=(
+                                    datetime.fromisoformat(item.get("createdDateTime"))
+                                    if item.get("createdDateTime")
+                                    else None
+                                ),
+                                last_modified_datetime=(
+                                    datetime.fromisoformat(
+                                        item.get("lastModifiedDateTime")
+                                    )
+                                    if item.get("lastModifiedDateTime")
+                                    else None
+                                ),
+                            )
+                            files.append(file_details)
 
                     next_url = data.get("@odata.nextLink")
         except requests.RequestException as exc:
@@ -323,11 +342,11 @@ class SharePointConnector(BaseModel):
             raise ProcessingError(err) from exc
         log.info(
             "Listed %d file(s) in SharePoint library '%s' on site '%s'.",
-            len(file_paths),
+            len(files),
             self.library.library,
             self.library.site,
         )
-        return file_paths
+        return files
 
     def check_object_exists(
         self, path: str, obj_type: Literal["file", "folder"]
