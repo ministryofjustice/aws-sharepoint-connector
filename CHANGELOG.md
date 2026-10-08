@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3]
+
+### Added
+
+- Added a `FileObject` model containing each file's name, path, creation time,
+  and last-modified time.
+- Added file metadata to results from S3 and SharePoint file-listing operations.
+
+### Changed
+
+- File-listing methods now return `FileObject` instances instead of file-path
+  strings.
+- Updated the Docker Python base image and refreshed the `urllib3` and `PyJWT`
+  dependencies.
+
+### Tests
+
+- Added and updated unit and integration coverage for file metadata returned
+  from S3 and SharePoint, including consistent timestamp handling.
+
 ## [1.9.2]
 
 ### Added

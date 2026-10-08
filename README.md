@@ -17,11 +17,10 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 ## Table of contents
 
 - [Architecture and flow](#architecture-and-flow)
-- [Configuration](#configuration)
 - [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Configuration and setup](#configuration-and-setup)
 - [Installation](#installation)
-- [How to run](#how-to-run)
-  - [Programmatic API](#programmatic-api)
 - [Error handling and retries](#error-handling-and-retries)
 - [How to modify or extend](#how-to-modify-or-extend)
 - [Troubleshooting](#troubleshooting)
@@ -35,7 +34,7 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 
 1. Create an engine with `create_engine(mode, sp_domain, sp_site, sp_library, s3_bucket)`
 2. Identify the files you want to move, and their destination
-3. For each file, call `engine.copy(source, destination, archive_folder="", source_handling="none")`:
+3. For each file, call `engine.copy(source, destination)`:
     - Validates source and destination paths (and archive folder if supplied).
     - Calls engine validation checks before any file movement begins.
     - Download from the source system (SharePoint or S3).
@@ -56,13 +55,69 @@ Operates in two modes: `write_to_s3` (SharePoint -> S3) and `write_to_sharepoint
 - `src/aws_sharepoint_connector/main.py`: Public API — `create_engine()`
 - `src/aws_sharepoint_connector/config.py`: Pydantic models for validated configuration.
 - `src/aws_sharepoint_connector/engine.py`: Abstract transfer logic.
+- `src/aws_sharepoint_connector/output_models.py`: File metadata model returned by file listings.
 - `src/aws_sharepoint_connector/sharepoint.py`: SharePoint connector.
 - `src/aws_sharepoint_connector/s3.py`: AWS S3 connector.
 - `src/aws_sharepoint_connector/auth.py`: Azure authentication and Graph utilities.
 - `src/aws_sharepoint_connector/utils.py`: Logger, extension normalisation,
   path validation, and HTTP retry logic.
 
-## Configuration
+## Prerequisites
+
+### Sharepoint site
+
+You will require a Sharepoint site to serve as the source or destination for files; this can be a pre-existing Sharepoint site. It is the responsibility of the owner of the SharePoint site to maintain appropriate access controls for the data stored in the site; this library offers no mechanism for managing access to files.
+
+### Azure app registration
+
+1. An Azure app has to be registered in Entra ID. This will be bespoke to your project and will provide the connection to the Sharepoint site that `aws-sharepoint-connector` will make use of, using a secret key. To request a new Azure app and have it connected to your Sharepoint site, raise a demand request by following the [instructions here](https://user-guide.staff-identity.service.justice.gov.uk/documentation/guidance/appreg.html#application-registrations-sso). Your app will need the `sites.selected` permission. You can do this in terraform against the staff infrastructure authentication services repo (see [EM setup](https://github.com/ministryofjustice/staff-identity-idam-entra-infra/tree/main/terraform/envs/live/hmpps-electronic-monitoring-data) for an example), then post to [#staff-identity-authentication-services](https://moj.enterprise.slack.com/archives/C04AFS7TV7S).
+2. You will then need to speak to the File and Data Management team, who will grant your app access to the specific sharepoint sites you need access to.
+
+### Azure app details & secret
+
+- You can view your [app registrations here](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+- Open up the app registration and the tenant ID will be available as `Directory (tenant) ID`.
+- The client ID is available as `Application (client) ID`.
+- The client secret is available from `manage` -> `certificates and secrets` - you may not be able to view it and instead may be sent it when the app is created.
+
+### AWS access
+
+- If running via airflow, or from within another repo that is running via airflow, then standard AP credentials and access management apply and will grant access to s3.
+
+
+## Quick start
+
+Install aws-sharepoint-connector from pypi and run the below (changing parameters to fit your s3 bucket, SharePoint site and files), you will also need to supply the secrets detailed below in [Configuration and setup](#configuration-and-step)
+
+
+```python
+from aws_sharepoint_connector import create_engine
+
+engine = create_engine(
+    mode="write_to_s3",
+    sp_domain="organisation.sharepoint.com",
+    sp_site="analytics-site",
+    sp_library="Documents",
+    s3_bucket="my-bucket",
+)
+
+source_files = engine.list_source_files(
+    search_folders=["reports/2026"],
+    include_ext=["csv", ".json"],
+    exclude_ext=["tmp"],
+)
+
+for source_file in source_files:
+    result = engine.copy(source_file.path, f"transferred/{source_file.path}")
+    print(result.target_url)
+```
+
+To archive a source after transfer, call `copy()` with
+`source_handling="archive"` and provide `archive_folder`. Files with zero bytes are
+skipped when uploading to SharePoint, with a log message.
+
+
+## Configuration and setup
 
 Configuration is parsed by the config classes in `src/aws_sharepoint_connector/config.py` which store
 the S3 bucket, Sharepoint site and library and Azure App secrets
@@ -78,6 +133,10 @@ DO NOT store as plain text
 | `SECRET_AZURE_CLIENT_ID` | string | Azure app registration client ID |
 | `SECRET_AZURE_CLIENT_SECRET` | string | Azure app registration client secret (store in secret manager) |
 
+---
+---
+---
+
 ### Required configuration variables
 
 Passed directly to `create_engine()` from your calling code
@@ -87,9 +146,16 @@ Passed directly to `create_engine()` from your calling code
 | Argument | Type | Description |
 | --- | --- | --- |
 | `mode` | string | Transfer direction: `write_to_s3` or `write_to_sharepoint` |
+| `sp_domain` | string | SharePoint domain (e.g. `organisation.sharepoint.com`) |
 | `sp_site` | string | SharePoint site name (without URL prefix, e.g. `analytics-site`) |
 | `sp_library` | string | SharePoint document library name (e.g. `Documents`) |
 | `s3_bucket` | string | S3 bucket name (without `s3://` prefix) |
+
+---
+---
+---
+
+### The copy method
 
 Passed to the engine's `copy` method to identify a specific file to move
 
@@ -99,119 +165,46 @@ Passed to the engine's `copy` method to identify a specific file to move
 | --- | --- | --- |
 | `source` | string | Source file path (SharePoint path or S3 key) |
 | `destination` | string | Destination file path (S3 key or SharePoint path) |
-| `archive_folder` | string | Folder to archive the source file into when `source_handling="archive"`. Must be a directory path in the same source system. |
-| `source_handling` | string | What to do with source after successful transfer: `"none"` (default), `"delete"`, or `"archive"`. |
+| `archive_folder` | Optional(string) | Folder to archive the source file into when `source_handling="archive"`. Must be a path in the same s3 bucket or SharePoint site. |
+| `source_handling` | Optional(string) | What to do with source after successful transfer: `"none"` (default), `"delete"`, or `"archive"`. |
 
-Optional source listing helper on each engine:
+
+Returns a `Result` instance containing details of the transfer:
+
+| Attribute | Type | Description |
+| --- | --- | --- |
+| `source` | string | Source file path (SharePoint path or S3 key). |
+| `destination` | string | Destination file path (S3 key or SharePoint path). |
+| `content_size` | int | Size of the transferred content in bytes. |
+| `source_handling` | string | Source-handling mode: `"none"`, `"delete"`, or `"archive"`. |
+| `status` | string | `"success"` when the transfer workflow completes. |
+| `target_url` | string | SharePoint file's `webUrl` or the destination's `s3://` URI. Empty when no destination URL is produced, such as for a skipped empty-file upload. |
+
+---
+---
+---
+
+### list file method
 
 **`list_source_files(search_folders=None, include_ext=None, exclude_ext=None)`**
 
 | Argument | Type | Description |
 | --- | --- | --- |
-| `search_folders` | list[string] \| None | Optional folder/prefix filters in the source system. Duplicate and overlapping folders are supported. |
-| `include_ext` | list[string] \| None | Optional allow-list of file extensions. Accepts values with or without `.` and in any case. |
-| `exclude_ext` | list[string] \| None | Optional deny-list of file extensions, applied after normalisation. |
+| `search_folders` | Optional(list[string]) | Optional folder/prefix filters in the source system. Duplicate and overlapping folders are supported. |
+| `include_ext` | Optional(list[string]) | Optional allow-list of file extensions. Accepts values with or without `.` and in any case. |
+| `exclude_ext` | Optional(list[string]) | Optional deny-list of file extensions, applied after normalisation. |
 
-### Example: SharePoint → S3 (single file)
+Returns a list of `FileObject` instances, one for each matching file:
 
-For a SharePoint file at:
-`https://organisation.sharepoint.com/sites/analytics-site/Documents/reports/2026/daily_report.csv`
+| Attribute | Type | Description |
+| --- | --- | --- |
+| `path` | string | File path relative to the source bucket or SharePoint library root. |
+| `name` | string | File name, including its extension. |
+| `created_datetime` | datetime \| None | File creation time, or `None` if unavailable. |
+| `last_modified_datetime` | datetime \| None | File last-modified time, or `None` if unavailable. |
 
-To copy to `s3://my-bucket/path/to/daily_report.csv`:
+For S3 objects, both timestamp attributes contain S3's last-modified time.
 
-```python
-engine = create_engine(
-    mode="write_to_s3",
-    sp_domain="organisation.sharepoint.com",
-    sp_site="analytics-site",
-    sp_library="Documents",
-    s3_bucket="my-bucket",
-)
-plans = [
-    {
-        "source": "reports/2026/daily_report.csv",
-        "destination": "path/to/daily_report.csv",
-    }
-]
-for plan in plans:
-    result = engine.copy(plan["source"], plan["destination"])
-```
-
-### Example: S3 → SharePoint (single file)
-
-To move the same file in the other direction:
-
-```python
-engine = create_engine(
-    mode="write_to_sharepoint",
-    sp_domain="organisation.sharepoint.com",
-    sp_site="analytics-site",
-    sp_library="Documents",
-    s3_bucket="my-bucket",
-)
-plans = [
-    {
-        "source": "path/to/daily_report.csv",
-        "destination": "reports/2026/daily_report.csv",
-    }
-]
-for plan in plans:
-    result = engine.copy(plan["source"], plan["destination"])
-```
-
-### Example: archive source after successful transfer
-
-```python
-engine = create_engine(
-    mode="write_to_sharepoint",
-    sp_domain="organisation.sharepoint.com",
-    sp_site="analytics-site",
-    sp_library="Documents",
-    s3_bucket="my-bucket",
-)
-
-result = engine.copy(
-    source="reports/2026/daily_report.csv",
-    destination="processed/daily_report.csv",
-    archive_folder="archive/reports/2026",
-    source_handling="archive",
-)
-```
-
-## Prerequisites
-
-### Sharepoint site
-
-You will require a Sharepoint site to serve as the source or destination for files. This can be a pre-existing Sharepoint site, though you should be mindful of who will have access to the data.
-
-### Azure app registration
-
-An Azure app has to be registered in Entra ID. This will be bespoke to your project and provide the connection to the Sharepoint site and is what the connector will authenticate into via the secret key. To request a new Azure app and have it connected to your Sharepoint site, raise a demand request by following the [instructions here](https://user-guide.staff-identity.service.justice.gov.uk/documentation/guidance/appreg.html#application-registrations-sso). You can do this in terraform against the staff infrastructure authentication services repo (see [EM setup](https://github.com/ministryofjustice/staff-identity-idam-entra-infra/tree/main/terraform/envs/live/hmpps-electronic-monitoring-data) for an example), then post to [#staff-identity-authentication-services](https://moj.enterprise.slack.com/archives/C04AFS7TV7S).
-
-The app will require these permissions:
-
-- `sites.selected`
-
-You will then need to speak to the File and Data Management team, who will grant your app access to the specific sharepoint sites you need access to.
-
-### Azure app details & secret
-
-You can view your [app registrations here](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
-
-Open up the app registration and the tenant ID will be available as `Directory (tenant) ID`.
-
-The client ID is available as `Application (client) ID`.
-
-The client secret is available from `manage` -> `certificates and secrets` - you may not be able to view it and instead may be sent it when the app is created.
-
-### AWS access
-
-If running via airflow, or from within another repo that is running via airflow, then standard AP credentials and access management apply and will grant access to s3.
-
-### Technical requirements
-
-- Python `3.13+`
-- [uv](https://docs.astral.sh/uv/) for dependency management
 
 ## Installation
 
@@ -223,11 +216,26 @@ uv sync --all-groups --all-extras
 
 ### Package install in another project
 
-If your project uses `uv`, add this package from the public GitHub repo directly and pin to a specific commit SHA:
+Install from PyPI using your preferred package manager:
+
+#### pip
 
 ```bash
-uv add "git+https://github.com/ministryofjustice/aws-sharepoint-connector.git@<commit_sha>"
+pip install aws-sharepoint-connector
 ```
+
+#### Poetry
+
+```bash
+poetry add aws-sharepoint-connector
+```
+
+#### uv
+
+```bash
+uv add aws-sharepoint-connector
+```
+
 
 ### Running tests
 
@@ -235,53 +243,6 @@ uv add "git+https://github.com/ministryofjustice/aws-sharepoint-connector.git@<c
 uv run python -m pytest                        # all tests with coverage
 uv run python -m pytest tests/unit             # unit tests only
 uv run python -m pytest tests/e2e              # E2E tests (no real API calls)
-```
-
-## How to run
-
-### Programmatic API
-
-Import `create_engine` from the `aws_sharepoint_connector` package.
-The Azure secret values must be present as environment variables.
-
-```python
-from aws_sharepoint_connector import create_engine
-
-engine = create_engine(
-    mode="write_to_s3",
-    sp_domain="organisation.sharepoint.com",
-    sp_site="analytics-site",
-    sp_library="Documents",
-    s3_bucket="my-bucket",
-)
-
-plans = [
-    {
-        "source": "reports/2026/daily_report.csv",
-        "destination": "path/to/daily_report.csv",
-    },
-    {
-        "source": "reports/2026/summary.csv",
-        "destination": "path/to/summary.csv",
-    },
-]
-
-for plan in plans:
-    result = engine.copy(plan["source"], plan["destination"])
-```
-
-You can optionally use the `list_source_files` methods on the engines to obtain a list
-of all files in the S3 bucket or SharePoint library. This can be used to programmatically
-build the list of plans to iterate over.
-
-Example with filters:
-
-```python
-source_files = engine.list_source_files(
-    search_folders=["reports/2026", "reports/2026/subfolder"],
-    include_ext=["csv", ".json"],
-    exclude_ext=["tmp"],
-)
 ```
 
 ## Error handling and retries
@@ -317,7 +278,7 @@ Batch iteration is handled by the calling code. The engine processes one file pe
 ### 1) Add a new transfer mode
 
 1. Create a new engine class in `src/aws_sharepoint_connector/engine.py` implementing:
-    - `_list_source_files(self, folders: list[str], include_ext: list[str], exclude_ext: list[str]) -> list[str]`
+    - `_list_source_files(self, folders: list[str], include_ext: list[str], exclude_ext: list[str]) -> list[FileObject]`
     - `_download_file(self, source: str) -> bytes`
     - `_upload_file(self, content: bytes, destination: str, content_size: int) -> None`
     - `_archive_source_file(self, source: str, archive_folder: str, content_size: int) -> None`
