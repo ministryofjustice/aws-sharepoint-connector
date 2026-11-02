@@ -1,4 +1,4 @@
-FROM ghcr.io/ministryofjustice/analytical-platform-airflow-python-base:1.50.0@sha256:b7e2c0ea1e0758a7ba736797350817466a6c5dad15e0b0b7a3c1c3c2096fef13
+FROM ghcr.io/ministryofjustice/analytical-platform-airflow-python-base:1.57.0@sha256:f2f2f632c9b9de59f868ba8c66ff19540dec715355345ae4cba11af3ad8b4957
 
 WORKDIR /opt/analyticalplatform
 
