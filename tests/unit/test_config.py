@@ -79,4 +79,4 @@ def test_secretconfig_load_from_env_vars() -> None:
         UUID("12345678-9012-3456-7890-123456789012") == secrets.SECRET_AZURE_TENANT_ID
     )
     assert secrets.SECRET_AZURE_CLIENT_ID.get_secret_value() == "fake-client-id"
-    assert secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake-client-secret"
+    assert secrets.SECRET_AZURE_CLIENT_SECRET.get_secret_value() == "fake"

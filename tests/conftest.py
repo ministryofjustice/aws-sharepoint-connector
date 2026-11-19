@@ -26,9 +26,9 @@ def monkeypatch_session() -> Generator[pytest.MonkeyPatch]:
 def set_env_vars(monkeypatch_session: pytest.MonkeyPatch) -> None:
     """Run before all tests to create environment variables."""
     test_env_vars = {
-        "SECRET_AZURE_TENANT_ID": "12345678901234567890123456789012",
-        "SECRET_AZURE_CLIENT_ID": "fake-client-id",
-        "SECRET_AZURE_CLIENT_SECRET": "fake-client-secret",  # pragma: allowlist secret
+        "SECRET_AZURE_TENANT_ID": "12345678901234567890123456789012",  # nosec: B105
+        "SECRET_AZURE_CLIENT_ID": "fake-client-id",  # nosec: B105
+        "SECRET_AZURE_CLIENT_SECRET": "fake",  # pragma: allowlist secret nosec: B105
     }
 
     for key, value in test_env_vars.items():
