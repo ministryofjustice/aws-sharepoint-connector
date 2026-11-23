@@ -9,6 +9,7 @@
 [![Python Linting](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-lint.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-lint.yml)
 [![Python Type Check](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/python-type.yml)
 [![Release Container](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml/badge.svg)](https://github.com/ministryofjustice/aws-sharepoint-connector/actions/workflows/release-container.yml)
+[![MOJ Repository Compliance Badge](https://github-community.service.justice.gov.uk/repository-standards/api/aws-sharepoint-connector/badge)](https://github-community.service.justice.gov.uk/repository-standards/technical-standard/repositories/aws-sharepoint-connector)
 
 Provides a simple connector for moving files between AWS S3 and Microsoft SharePoint (via Microsoft Graph API).
 
